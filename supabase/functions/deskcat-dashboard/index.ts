@@ -1050,7 +1050,9 @@ Deno.serve(async (req) => {
     const latestDaily = dailyRows.at(-1);
     const productSiteViewsTotal = Number(pageViewsTotal.count ?? publicStats?.productSiteViews ?? 0);
     const githubViews = Number(githubStats.views || publicStats?.githubViews || 0);
+    const githubUniqueViews = Number(githubStats.uniqueViews || 0);
     const githubStars = Number(githubStats.stars || publicStats?.githubStars || 0);
+    const visibleViewsTotal = productSiteViewsTotal + githubUniqueViews;
 
     return json({
       ok: true,
@@ -1065,7 +1067,7 @@ Deno.serve(async (req) => {
         useCount: sum(dailyRows as unknown as Array<Record<string, unknown>>, 'feature_use_count'),
         durationMs: sum(dailyRows as unknown as Array<Record<string, unknown>>, 'total_duration_ms'),
         downloads: productDownloads.count + Number(githubDownloads.count ?? 0),
-        views: productSiteViewsTotal + githubViews,
+        views: visibleViewsTotal,
         githubStars,
       },
       daily: dailyRows,
@@ -1105,7 +1107,7 @@ Deno.serve(async (req) => {
           views: githubViews,
           stars: githubStars,
         },
-        total: productSiteViewsTotal + githubViews,
+        total: visibleViewsTotal,
       },
       recentEvents: (recent.data ?? []) as RecentEvent[],
     });

@@ -516,7 +516,6 @@ function renderReach(data) {
   const views = data.views || {};
   const productSite = views.productSite || {};
   const github = views.github || {};
-  const paths = productSite.paths || [];
   reachSummaryEl.textContent = `${formatNumber(views.total)} total views`;
 
   const rows = [
@@ -524,11 +523,6 @@ function renderReach(data) {
       label: 'Product website views',
       value: productSite.total,
       sub: `${formatNumber(productSite.range)} in selected range`,
-    },
-    {
-      label: `GitHub views${github.viewsWindowDays ? ` · ${github.viewsWindowDays} days` : ''}`,
-      value: github.views,
-      sub: github.viewsError || 'repository traffic views',
     },
     {
       label: 'GitHub unique views',
@@ -540,11 +534,6 @@ function renderReach(data) {
       value: github.stars,
       sub: 'repository stargazers',
     },
-    ...paths.slice(0, 4).map((path) => ({
-      label: `Website · ${path.path}`,
-      value: path.count,
-      sub: 'selected range',
-    })),
   ];
 
   reachListEl.innerHTML = rows.map((row) => `
