@@ -475,8 +475,10 @@ function renderDownloads(data) {
   const downloads = data.downloads || {};
   const productSite = downloads.productSite || {};
   const github = downloads.github || {};
-  const productAssets = productSite.assets || [];
   const githubAssets = github.assets || [];
+  const cloneText = github.cloneError
+    ? github.cloneError
+    : `${formatNumber(github.countedCloneCount ?? github.cloneUniqueCount)} unique clones · ${formatNumber(github.cloneWindowDays || 14)} day GitHub traffic`;
   downloadSummaryEl.textContent = `${formatNumber(downloads.total)} total`;
 
   const rows = [
@@ -488,27 +490,9 @@ function renderDownloads(data) {
     {
       label: `GitHub${github.repo ? ` · ${github.repo}` : ''}`,
       value: github.count,
-      sub: github.error || 'current release asset downloads',
+      sub: github.error || `current release asset downloads · ${cloneText}`,
       level: 0,
     },
-    {
-      label: 'GitHub release assets',
-      value: github.releaseAssetCount,
-      sub: 'release asset downloads',
-      level: 1,
-    },
-    {
-      label: 'GitHub unique repository clones',
-      value: github.countedCloneCount ?? github.cloneUniqueCount,
-      sub: github.cloneError || `${formatNumber(github.cloneWindowDays || 14)} day GitHub traffic`,
-      level: 1,
-    },
-    ...productAssets.slice(0, 4).map((asset) => ({
-      label: `Website · ${asset.asset}`,
-      value: asset.count,
-      sub: 'selected range',
-      level: 0,
-    })),
     ...githubAssets.slice(0, 4).map((asset) => ({
       label: asset.asset,
       value: asset.count,

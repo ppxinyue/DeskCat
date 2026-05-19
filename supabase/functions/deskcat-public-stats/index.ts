@@ -54,6 +54,10 @@ function isIgnoredPageView(path: string, referrer: string | null, userAgent: str
     || referrer === 'https://vercel.com/';
 }
 
+function isIgnoredDownloadAsset(asset: string) {
+  return asset.startsWith('debug-');
+}
+
 async function getGithubDownloads() {
   const repo = Deno.env.get('DESKCAT_GITHUB_REPO') || Deno.env.get('GITHUB_REPO') || 'ppxinyue/DeskCat';
   const token = Deno.env.get('GITHUB_TOKEN');
@@ -165,7 +169,7 @@ Deno.serve(async (req) => {
     if (req.method === 'GET') {
       const [devices, downloads, pageViews, githubDownloads, githubStats] = await Promise.all([
         supabase.from('devices').select('device_id', { count: 'exact', head: true }),
-        supabase.from('download_events').select('id', { count: 'exact', head: true }),
+        supabase.from('download_events').select('id', { count: 'exact', head: true }).not('asset', 'ilike', 'debug-%'),
         supabase.from('page_view_events').select('id', { count: 'exact', head: true }),
         getGithubDownloads().catch(() => ({
           count: 0,
@@ -236,6 +240,9 @@ Deno.serve(async (req) => {
 
       const asset = safeText(payload.asset, 120);
       if (!asset) return json({ ok: false, error: 'Missing asset' }, 400);
+      if (isIgnoredDownloadAsset(asset)) {
+        return json({ ok: true, ignored: true });
+      }
 
       const { error } = await supabase.from('download_events').insert({
         source: 'product_site',

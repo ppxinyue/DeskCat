@@ -770,14 +770,16 @@ function buildUsers(
 function aggregateProductDownloads(rows: DailyDownloadMetric[]) {
   const byAsset = new Map<string, number>();
   for (const row of rows) {
+    if (String(row.asset ?? '').startsWith('debug-')) continue;
     byAsset.set(row.asset, (byAsset.get(row.asset) ?? 0) + Number(row.download_count ?? 0));
   }
+  const daily = rows.filter((row) => !String(row.asset ?? '').startsWith('debug-'));
   return {
     count: Array.from(byAsset.values()).reduce((total, value) => total + value, 0),
     assets: Array.from(byAsset.entries())
       .map(([asset, count]) => ({ asset, count }))
       .sort((a, b) => b.count - a.count),
-    daily: rows,
+    daily,
   };
 }
 
@@ -982,7 +984,7 @@ Deno.serve(async (req) => {
       supabase.from('daily_device_feature_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }).order('duration_ms', { ascending: false }),
       supabase.from('device_backup_metrics').select('*'),
       supabase.from('daily_download_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }),
-      supabase.from('download_events').select('id', { count: 'exact', head: true }),
+      supabase.from('download_events').select('id', { count: 'exact', head: true }).not('asset', 'ilike', 'debug-%'),
       supabase.from('daily_page_view_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }),
       supabase.from('page_view_events').select('id', { count: 'exact', head: true }),
       getPublicStatsFallback().catch(() => null),
@@ -1062,7 +1064,7 @@ Deno.serve(async (req) => {
         eventCount: sum(dailyRows as unknown as Array<Record<string, unknown>>, 'event_count'),
         useCount: sum(dailyRows as unknown as Array<Record<string, unknown>>, 'feature_use_count'),
         durationMs: sum(dailyRows as unknown as Array<Record<string, unknown>>, 'total_duration_ms'),
-        downloads: Number(downloadsTotal.count ?? 0) + Number(githubDownloads.count ?? 0),
+        downloads: productDownloads.count + Number(githubDownloads.count ?? 0),
         views: productSiteViewsTotal + githubViews,
         githubStars,
       },
@@ -1083,13 +1085,13 @@ Deno.serve(async (req) => {
       eventUsage: aggregates.events.slice(0, 40),
       downloads: {
         productSite: {
-          total: downloadsTotal.count ?? 0,
+          total: productDownloads.count,
           range: productDownloads.count,
           assets: productDownloads.assets,
           daily: productDownloads.daily,
         },
         github: githubDownloads,
-        total: Number(downloadsTotal.count ?? 0) + Number(githubDownloads.count ?? 0),
+        total: productDownloads.count + Number(githubDownloads.count ?? 0),
       },
       views: {
         productSite: {
