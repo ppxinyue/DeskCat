@@ -111,6 +111,7 @@ export type CloudSyncStatus = {
   endpoint: string | null;
   pendingBackup: boolean;
   pendingTelemetryEvents: number;
+  lastDeviceSyncAt: string | null;
   lastBackupAt: string | null;
   lastSyncAttemptAt: string | null;
   lastSyncError: string | null;
@@ -132,6 +133,7 @@ export type CloudBackupPayload = {
 type CloudSyncState = {
   deviceId: string;
   pendingBackup: CloudBackupPayload | null;
+  lastDeviceSyncAt: string | null;
   lastBackupAt: string | null;
   lastSyncAttemptAt: string | null;
   lastSyncError: string | null;
@@ -194,6 +196,7 @@ function createStore(): Store {
     cloudSync: {
       deviceId: createDeviceId(),
       pendingBackup: null,
+      lastDeviceSyncAt: null,
       lastBackupAt: null,
       lastSyncAttemptAt: null,
       lastSyncError: null,
@@ -296,6 +299,14 @@ function queueCloudBackup(store: Store, reason: string) {
 function getCloudEndpoint(store: Store) {
   const value = store.settings.cloudSyncEndpoint?.trim();
   return value || null;
+}
+
+function shouldRefreshDeviceRegistration(store: Store) {
+  const lastSyncedAt = store.cloudSync.lastDeviceSyncAt || store.cloudSync.lastSyncAttemptAt;
+  if (!lastSyncedAt) return true;
+  const lastTime = new Date(lastSyncedAt).getTime();
+  if (!Number.isFinite(lastTime)) return true;
+  return Date.now() - lastTime > 24 * 60 * 60 * 1000;
 }
 
 function getClientPlatform() {
@@ -865,6 +876,7 @@ export async function getCloudSyncStatus(): Promise<CloudSyncStatus> {
     endpoint: getCloudEndpoint(store),
     pendingBackup: Boolean(store.cloudSync.pendingBackup),
     pendingTelemetryEvents: getUnsyncedTelemetryEvents(store).length,
+    lastDeviceSyncAt: store.cloudSync.lastDeviceSyncAt,
     lastBackupAt: store.cloudSync.lastBackupAt,
     lastSyncAttemptAt: store.cloudSync.lastSyncAttemptAt,
     lastSyncError: store.cloudSync.lastSyncError,
@@ -875,7 +887,11 @@ export async function hasPendingCloudSync(): Promise<boolean> {
   const store = loadStore();
   return cloudBackupEnabled(store)
     && Boolean(getCloudEndpoint(store))
-    && (Boolean(store.cloudSync.pendingBackup) || getUnsyncedTelemetryEvents(store).length > 0);
+    && (
+      Boolean(store.cloudSync.pendingBackup)
+      || getUnsyncedTelemetryEvents(store).length > 0
+      || shouldRefreshDeviceRegistration(store)
+    );
 }
 
 export async function getCloudBackupPayload(): Promise<CloudBackupPayload | null> {
@@ -937,6 +953,7 @@ export async function syncCloudBackup(endpointOverride?: string): Promise<CloudS
         endpoint: null,
         pendingBackup: Boolean(draft.cloudSync.pendingBackup),
         pendingTelemetryEvents: getUnsyncedTelemetryEvents(draft).length,
+        lastDeviceSyncAt: draft.cloudSync.lastDeviceSyncAt,
         lastBackupAt: draft.cloudSync.lastBackupAt,
         lastSyncAttemptAt: draft.cloudSync.lastSyncAttemptAt,
         lastSyncError: draft.cloudSync.lastSyncError,
@@ -982,6 +999,7 @@ export async function syncCloudBackup(endpointOverride?: string): Promise<CloudS
         endpoint,
         pendingBackup: Boolean(draft.cloudSync.pendingBackup),
         pendingTelemetryEvents: getUnsyncedTelemetryEvents(draft).length,
+        lastDeviceSyncAt: draft.cloudSync.lastDeviceSyncAt,
         lastBackupAt: draft.cloudSync.lastBackupAt,
         lastSyncAttemptAt: draft.cloudSync.lastSyncAttemptAt,
         lastSyncError: draft.cloudSync.lastSyncError,
@@ -996,7 +1014,8 @@ export async function syncCloudBackup(endpointOverride?: string): Promise<CloudS
       if (uploadedIds.has(event.id)) event.syncedAt = syncedAt;
     });
     draft.cloudSync.pendingBackup = null;
-    draft.cloudSync.lastBackupAt = syncedAt;
+    draft.cloudSync.lastDeviceSyncAt = syncedAt;
+    if (backup) draft.cloudSync.lastBackupAt = syncedAt;
     draft.cloudSync.lastSyncAttemptAt = attemptedAt;
     draft.cloudSync.lastSyncError = null;
     return {
@@ -1007,6 +1026,7 @@ export async function syncCloudBackup(endpointOverride?: string): Promise<CloudS
       endpoint,
       pendingBackup: false,
       pendingTelemetryEvents: getUnsyncedTelemetryEvents(draft).length,
+      lastDeviceSyncAt: draft.cloudSync.lastDeviceSyncAt,
       lastBackupAt: draft.cloudSync.lastBackupAt,
       lastSyncAttemptAt: draft.cloudSync.lastSyncAttemptAt,
       lastSyncError: null,
