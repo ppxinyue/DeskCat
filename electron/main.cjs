@@ -36,6 +36,7 @@ const {
 } = require('./codingStatus.cjs');
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
 const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
+const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
 const {
   hasSeenWelcomePermissionPrompt,
   markWelcomePermissionPromptSeen,
@@ -57,6 +58,10 @@ const debugTimelineEnabled =
 const windows = new Map();
 const windowShowController = createDeferredWindowShowController();
 const petVisibilityController = createPetVisibilityController();
+const shortcutRegistry = createGlobalShortcutRegistry({
+  globalShortcut,
+  onChatFocus: () => broadcast('shortcut:chat-focus', {}),
+});
 const updaterState = {
   initialized: false,
   checking: false,
@@ -1380,6 +1385,23 @@ function updateTrayMenu() {
     { type: 'separator' },
     { label: '退出', click: () => app.quit() },
   ]));
+}
+
+function registerAppGlobalShortcuts({ globalShortcut: chatShortcut } = {}) {
+  return shortcutRegistry.registerChatShortcut(chatShortcut || DEFAULT_GLOBAL_SHORTCUT);
+}
+
+function handleRendererEvent(channel, payload) {
+  if (channel === 'settings:updated') {
+    const nextShortcut =
+      payload?.key === 'globalShortcut'
+        ? payload.value
+        : payload && typeof payload === 'object' && 'globalShortcut' in payload
+          ? payload.globalShortcut
+          : null;
+    if (nextShortcut) registerAppGlobalShortcuts({ globalShortcut: nextShortcut });
+  }
+  broadcast(channel, payload);
 }
 
 function ensureTopmostGuard() {
@@ -4264,6 +4286,8 @@ const handlers = {
   hide_pet_window: () => hidePetWindow(),
   is_pet_window_visible: () => isPetVisible(),
   read_pet_window_debug_info: () => readPetWindowDebugInfo(),
+  register_global_shortcuts: registerAppGlobalShortcuts,
+  read_global_shortcut_status: () => shortcutRegistry.getState(),
   read_pet_presence_context: readPetPresenceContext,
   quit_app: () => app.quit(),
   pin_pet_above_fullscreen_cmd: () => applyFloatingFullscreenBehavior(windows.get('pet'), { force: true }),
@@ -4440,7 +4464,7 @@ ipcMain.handle('deskcat:invoke', async (_event, command, args) => {
 });
 
 ipcMain.handle('deskcat:emit', (_event, channel, payload) => {
-  broadcast(channel, payload);
+  handleRendererEvent(channel, payload);
 });
 
 ipcMain.handle('deskcat:window', (event, action, value) => {
@@ -4599,7 +4623,7 @@ app.whenReady().then(() => {
       broadcastUpdateStatus('error');
     });
   }, 5000);
-  globalShortcut.register('CommandOrControl+Shift+Space', () => broadcast('shortcut:chat-focus', {}));
+  registerAppGlobalShortcuts();
   app.on('activate', () => {
     if (!windows.get('pet')) createPetWindow();
   });
@@ -4611,5 +4635,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   if (topmostGuard) clearInterval(topmostGuard);
-  globalShortcut.unregisterAll();
+  shortcutRegistry.unregisterAll();
 });

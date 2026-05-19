@@ -218,6 +218,11 @@ function App() {
   }, [loaded, settings.appLanguage]);
 
   useEffect(() => {
+    if (!loaded || windowLabel !== 'pet') return;
+    invoke('register_global_shortcuts', { globalShortcut: settings.globalShortcut }).catch(() => {});
+  }, [loaded, settings.globalShortcut, windowLabel]);
+
+  useEffect(() => {
     if (!loaded) return;
     trackFeatureUse('app', 'app.window.open', { windowLabel });
     const timer = createFeatureTimer('app', 'app.window.session', { windowLabel });
