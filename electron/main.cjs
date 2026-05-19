@@ -37,7 +37,7 @@ const {
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
 const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
 const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
-const { readLaunchAtLogin, setLaunchAtLogin, shouldApplyDefaultLaunchAtLogin } = require('./loginItems.cjs');
+const { applyDefaultLaunchAtLogin, readLaunchAtLogin, setLaunchAtLogin } = require('./loginItems.cjs');
 const {
   hasSeenWelcomePermissionPrompt,
   markWelcomePermissionPromptSeen,
@@ -4611,7 +4611,7 @@ function registerProtocols() {
 app.whenReady().then(() => {
   registerProtocols();
   secureKeyStore = createSecureKeyStore({ userDataPath: app.getPath('userData'), safeStorage });
-  if (shouldApplyDefaultLaunchAtLogin(process.platform)) setLaunchAtLogin(app, true);
+  applyDefaultLaunchAtLogin(app);
   setAppIcon(resolveBundledAppIconPath());
   showPetWindow();
   ensureTopmostGuard();

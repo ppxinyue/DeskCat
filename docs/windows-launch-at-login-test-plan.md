@@ -7,7 +7,8 @@ This step covers the Windows launch-at-login integration behind the General sett
 ## Implementation Notes
 
 - macOS keeps the existing default startup registration path.
-- Windows no longer forces startup registration when the app launches.
+- Windows also enables startup registration by default.
+- Windows respects an explicit user opt-out after the user turns the setting off.
 - Windows `set_launch_at_login` registers the explicit executable path with Electron:
   - packaged app: `process.execPath`
   - development app: `process.execPath` plus the current app path argument
@@ -26,7 +27,8 @@ The startup suite includes `electron/loginItems.test.cjs`, which verifies:
 - Windows packaged login items include the executable path.
 - Windows development login items include the app path argument.
 - Disabling Windows startup keeps the executable path so Electron can remove the right entry.
-- The app applies default startup registration only on macOS.
+- The app applies default startup registration on macOS and Windows.
+- Windows default startup registration does not override a persisted user opt-out.
 
 ## Manual Test
 
@@ -39,10 +41,12 @@ pnpm electron:dev
 Then:
 
 1. Open Settings > General.
-2. Toggle Launch at login on.
-3. Close and reopen Settings; the switch should remain on if Windows accepted the login item.
-4. Toggle Launch at login off.
-5. Close and reopen Settings; the switch should remain off.
+2. On a fresh user profile, the Launch at login switch should read on after the app starts.
+3. Toggle Launch at login off.
+4. Close and reopen Settings; the switch should remain off.
+5. Quit and restart DeskCat; the switch should still remain off.
+6. Toggle Launch at login on.
+7. Close and reopen Settings; the switch should remain on if Windows accepted the login item.
 
 Optional Windows check:
 
@@ -54,6 +58,7 @@ Expected:
 
 - When enabled, Windows has a DeskCat launch entry.
 - When disabled, the DeskCat launch entry is absent or no longer points to the app.
+- After the user disables the setting, restarting DeskCat does not recreate the launch entry.
 
 ## macOS Regression Check
 
