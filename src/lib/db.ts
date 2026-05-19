@@ -161,6 +161,8 @@ type Store = {
 };
 
 const STORE_KEY = 'deskcat:electron-db:v1';
+const DEFAULT_CLOUD_SYNC_ENDPOINT = 'https://vuxzqebeirynkdyonzud.functions.supabase.co/desksprite-sync';
+const DEFAULT_CLOUD_SYNC_INGEST_TOKEN = '1668aba1ee2b3e4a71ac6d65c385a2641f8573b9989dc9fd5ded30b796b27025';
 
 function now() {
   return new Date().toISOString();
@@ -174,11 +176,11 @@ function createDeviceId() {
 
 function getDefaultCloudSettings(): Record<string, string> {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  const endpoint = env?.VITE_CLOUD_SYNC_ENDPOINT?.trim();
-  const ingestToken = env?.VITE_CLOUD_SYNC_INGEST_TOKEN?.trim();
+  const endpoint = env?.VITE_CLOUD_SYNC_ENDPOINT?.trim() || DEFAULT_CLOUD_SYNC_ENDPOINT;
+  const ingestToken = env?.VITE_CLOUD_SYNC_INGEST_TOKEN?.trim() || DEFAULT_CLOUD_SYNC_INGEST_TOKEN;
   return {
-    ...(endpoint ? { cloudSyncEndpoint: endpoint } : {}),
-    ...(ingestToken ? { cloudSyncIngestToken: ingestToken } : {}),
+    cloudSyncEndpoint: endpoint,
+    cloudSyncIngestToken: ingestToken,
   };
 }
 
