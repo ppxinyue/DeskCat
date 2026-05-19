@@ -45,6 +45,15 @@ function safeText(value: unknown, maxLength: number) {
   return trimmed.slice(0, maxLength);
 }
 
+function isIgnoredPageView(path: string, referrer: string | null, userAgent: string | null) {
+  const normalizedUserAgent = (userAgent ?? '').toLowerCase();
+  return path === '/smoke-test'
+    || normalizedUserAgent.includes('headlesschrome')
+    || normalizedUserAgent.includes('codex/')
+    || normalizedUserAgent.startsWith('curl/')
+    || referrer === 'https://vercel.com/';
+}
+
 async function getGithubDownloads() {
   const repo = Deno.env.get('DESKCAT_GITHUB_REPO') || Deno.env.get('GITHUB_REPO') || 'ppxinyue/DeskCat';
   const token = Deno.env.get('GITHUB_TOKEN');
@@ -206,12 +215,19 @@ Deno.serve(async (req) => {
       const eventType = safeText(payload.eventType, 32) || 'download';
 
       if (eventType === 'page_view') {
+        const path = safeText(payload.path, 500) || '/';
+        const referrer = safeText(payload.referrer, 500);
+        const userAgent = safeText(req.headers.get('user-agent'), 500);
+        if (isIgnoredPageView(path, referrer, userAgent)) {
+          return json({ ok: true, ignored: true });
+        }
+
         const { error } = await supabase.from('page_view_events').insert({
           source: 'product_site',
-          path: safeText(payload.path, 500) || '/',
+          path,
           locale: safeText(payload.locale, 32),
-          referrer: safeText(payload.referrer, 500),
-          user_agent: safeText(req.headers.get('user-agent'), 500),
+          referrer,
+          user_agent: userAgent,
         });
         if (error) throw error;
 
