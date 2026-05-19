@@ -593,9 +593,9 @@ function renderEvents(data) {
 function renderNewUsersToday(data) {
   const summary = data.newUsersToday || {};
   const users = summary.users || [];
-  newUsersSummaryEl.textContent = `${formatNumber(summary.count || users.length)} new · ${summary.date || ''}`;
+  newUsersSummaryEl.textContent = `${formatNumber(summary.count || users.length)} active · ${summary.date || ''}`;
   if (users.length === 0) {
-    newUsersListEl.innerHTML = '<div class="empty">No new users today.</div>';
+    newUsersListEl.innerHTML = '<div class="empty">No active users today.</div>';
     return;
   }
 
@@ -616,8 +616,8 @@ function renderNewUsersToday(data) {
             <p>${meta || 'No client metadata yet'}</p>
           </div>
           <div class="new-user-time">
-            <strong>${formatTime(user.firstSeenAt)}</strong>
-            <span>first seen</span>
+            <strong>${formatTime(timeline.lastEventAt || user.lastSeenAt)}</strong>
+            <span>last active</span>
           </div>
         </div>
         <div class="new-user-stats">

@@ -168,6 +168,9 @@ button {
 .new-users-list {
   display: grid;
   gap: 12px;
+  max-height: 620px;
+  overflow-y: auto;
+  padding-right: 8px;
 }
 
 .new-user-card {

@@ -647,9 +647,7 @@ function buildUserLocations(devices: DeviceMetric[]) {
     .sort((a, b) => b.users - a.users || String(a.label).localeCompare(String(b.label)));
 }
 
-function buildNewUsersToday(devices: DeviceMetric[], timelineRows: RecentEvent[], today: TodayBounds) {
-  const start = new Date(today.startIso).getTime();
-  const end = new Date(today.endIso).getTime();
+function buildActiveUsersToday(devices: DeviceMetric[], timelineRows: RecentEvent[], today: TodayBounds) {
   const timelineByDevice = new Map<string, RecentEvent[]>();
   for (const row of timelineRows) {
     const rows = timelineByDevice.get(row.device_id) ?? [];
@@ -658,11 +656,7 @@ function buildNewUsersToday(devices: DeviceMetric[], timelineRows: RecentEvent[]
   }
 
   const users = devices
-    .filter((device) => {
-      const firstSeen = new Date(device.first_seen_at).getTime();
-      return Number.isFinite(firstSeen) && firstSeen >= start && firstSeen < end;
-    })
-    .sort((a, b) => String(b.first_seen_at).localeCompare(String(a.first_seen_at)))
+    .filter((device) => timelineByDevice.has(device.device_id))
     .map((device) => {
       const metadata = device.metadata ?? null;
       const root = readObject(metadata);
@@ -735,7 +729,8 @@ function buildNewUsersToday(devices: DeviceMetric[], timelineRows: RecentEvent[]
           })),
         },
       };
-    });
+    })
+    .sort((a, b) => String(b.timeline.lastEventAt ?? '').localeCompare(String(a.timeline.lastEventAt ?? '')));
 
   return {
     date: today.date,
@@ -1222,7 +1217,7 @@ Deno.serve(async (req) => {
       featureDailyUsers: aggregateFeatureUsers(featureUserRows).slice(0, 80),
       dailyUserUsage: aggregateDeviceUsage(deviceUsageRows).slice(0, 200),
       dailyUserUsageByDay: aggregateDailyUsageByDay(deviceUsageRows),
-      newUsersToday: buildNewUsersToday(
+      newUsersToday: buildActiveUsersToday(
         deviceRows,
         (todayTimeline.data ?? []) as RecentEvent[],
         today,
