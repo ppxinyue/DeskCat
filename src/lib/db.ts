@@ -160,6 +160,7 @@ type Store = {
 
 export const CLOUD_SYNC_PENDING_EVENT = 'deskcat:cloud-sync-pending';
 export const CLOUD_SYNC_STORE_KEY = 'deskcat:electron-db:v1';
+export const TIMELINE_MOJIBAKE_REPAIR_KEY = 'deskcat:timeline-mojibake-repair:v1';
 const STORE_KEY = CLOUD_SYNC_STORE_KEY;
 const DEFAULT_CLOUD_SYNC_ENDPOINT = 'https://vuxzqebeirynkdyonzud.functions.supabase.co/deskcat-sync';
 const DEFAULT_CLOUD_SYNC_INGEST_TOKEN = 'deskcat-alpha-ingest-v1:FAX238zsJDzSlhfxbNJmY6q5Ij92oY6i';
@@ -378,6 +379,57 @@ function domainFromUrl(url: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+export function cleanTimelineMojibakeText(value: string | null | undefined): string {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text
+    .replace(/\uFFFD+/g, '')
+    .replace(/\s+([,.;:!?，。；：！？])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function cleanTimelineMojibakeNullableText(value: string | null | undefined): string | null {
+  const cleaned = cleanTimelineMojibakeText(value);
+  return cleaned || null;
+}
+
+function cleanTimelineMojibakeMarker(marker: TimelineBackgroundMarker): TimelineBackgroundMarker {
+  return {
+    ...marker,
+    type: cleanTimelineMojibakeText(marker.type),
+    name: cleanTimelineMojibakeText(marker.name),
+    detail: cleanTimelineMojibakeText(marker.detail),
+  };
+}
+
+function cleanTimelineMojibakeEntry(entry: TimelineEntry): TimelineEntry {
+  const appName = cleanTimelineMojibakeText(entry.appName);
+  const windowTitle = cleanTimelineMojibakeText(entry.windowTitle);
+  const url = cleanTimelineMojibakeNullableText(entry.url);
+  return {
+    ...entry,
+    appName,
+    windowTitle,
+    url,
+    domain: domainFromUrl(url),
+    category: classifyTimelineCategory(appName, windowTitle, url),
+    backgroundMarkers: Array.isArray(entry.backgroundMarkers)
+      ? entry.backgroundMarkers.map(cleanTimelineMojibakeMarker)
+      : [],
+  };
+}
+
+function timelineEntryNeedsMojibakeRepair(entry: TimelineEntry) {
+  return /\uFFFD/.test(JSON.stringify({
+    appName: entry.appName,
+    windowTitle: entry.windowTitle,
+    url: entry.url,
+    domain: entry.domain,
+    backgroundMarkers: entry.backgroundMarkers,
+  }));
 }
 
 const TIMELINE_EXACT_APP_CATEGORIES: Record<string, TimelineCategory> = {
@@ -774,20 +826,22 @@ export async function upsertTimelineEntry({
   const end = Math.max(startedAt, endedAt);
   if (end - start < 1000) return null;
   return mutate((store) => {
-    const normalizedUrl = url?.trim() || null;
+    const normalizedAppName = cleanTimelineMojibakeText(appName);
+    const normalizedWindowTitle = cleanTimelineMojibakeText(windowTitle);
+    const normalizedUrl = cleanTimelineMojibakeNullableText(url);
     const domain = domainFromUrl(normalizedUrl);
-    const category = classifyTimelineCategory(appName, windowTitle, normalizedUrl);
+    const category = classifyTimelineCategory(normalizedAppName, normalizedWindowTitle, normalizedUrl);
     const next: TimelineEntry = {
       id: id ?? store.nextIds.timelineEntry,
       date: localDateKey(new Date(end)),
       startedAt: new Date(start).toISOString(),
       endedAt: new Date(end).toISOString(),
-      appName,
-      windowTitle,
+      appName: normalizedAppName,
+      windowTitle: normalizedWindowTitle,
       url: normalizedUrl,
       domain,
       category,
-      backgroundMarkers: backgroundMarkers ?? [],
+      backgroundMarkers: (backgroundMarkers ?? []).map(cleanTimelineMojibakeMarker),
       ...(foregroundVisible === false ? { foregroundVisible: false } : {}),
     };
     const existingIndex = id ? store.timelineEntries.findIndex((entry) => entry.id === id) : -1;
@@ -800,7 +854,7 @@ export async function upsertTimelineEntry({
     const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
     store.timelineEntries = store.timelineEntries.filter((entry) => new Date(entry.endedAt).getTime() >= cutoff);
     appendTelemetryEvent(store, 'timeline.entry', 'timeline', 1, end - start, {
-      appName,
+      appName: normalizedAppName,
       category,
       domain,
       foregroundVisible: foregroundVisible !== false,
@@ -835,6 +889,25 @@ export async function getTimelineEntries(date = localDateKey()): Promise<Timelin
         ? entry.backgroundMarkers.map((marker) => ({ ...marker }))
         : [],
     }));
+}
+
+export async function repairTimelineMojibakeEntries({ force = false } = {}): Promise<{ scanned: number; repaired: number }> {
+  if (!force && localStorage.getItem(TIMELINE_MOJIBAKE_REPAIR_KEY) === 'done') {
+    return { scanned: 0, repaired: 0 };
+  }
+
+  const result = mutate((store) => {
+    let repaired = 0;
+    store.timelineEntries = store.timelineEntries.map((entry) => {
+      if (!timelineEntryNeedsMojibakeRepair(entry)) return entry;
+      repaired += 1;
+      return cleanTimelineMojibakeEntry(entry);
+    });
+    localStorage.setItem(TIMELINE_MOJIBAKE_REPAIR_KEY, 'done');
+    return { scanned: store.timelineEntries.length, repaired };
+  }, { backupReason: 'timeline-mojibake-repair' });
+
+  return result;
 }
 
 export async function recordTelemetryEvent({

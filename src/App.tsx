@@ -12,7 +12,7 @@ import { COMPACT_CHAT_PENDING_IMAGE_KEY, serializeDroppedChatImage } from "@/fea
 import { firstDraggedImageFile, hasDraggedFileItems, hasDraggedImageItems } from "@/features/chat/dragImageFiles";
 import { usePetStore } from "@/features/pet/petStore";
 import { useSettingsStore, type AppSettings, type CodingProvider } from "@/features/settings/settingsStore";
-import { createConversation, getConversations, getMessages, getSetting, insertMessage, recordCodingModeTime, recordDistraction, recordFocusSession, upsertTimelineEntry } from "@/lib/db";
+import { createConversation, getConversations, getMessages, getSetting, insertMessage, recordCodingModeTime, recordDistraction, recordFocusSession, repairTimelineMojibakeEntries, upsertTimelineEntry } from "@/lib/db";
 import { flushCloudSync, startCloudSyncScheduler } from "@/lib/cloudSyncScheduler";
 import { getThemeClassAction, shouldDeferWindowContent } from "@/lib/startupTheme";
 import { shouldRequestAccessibilityPermission, shouldWaitForExistingAccessibilityPermission, supportsForegroundActivityPlatform } from "@/lib/platformSupport";
@@ -198,6 +198,10 @@ function App() {
     if (label === "chat") {
       document.title = "";
       document.body.classList.add("has-background");
+    }
+
+    if (label === "pet" && isWindowsRuntime()) {
+      repairTimelineMojibakeEntries().catch(() => {});
     }
   }, []);
 
