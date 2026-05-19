@@ -526,6 +526,17 @@ function readString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function parseDeskCatVersion(userAgent: string | null) {
+  const match = userAgent?.match(/\bDeskCat\/([^\s]+)/i);
+  return match?.[1] ?? null;
+}
+
+function appVersionFromMetadata(metadata: Record<string, unknown> | null) {
+  const root = readObject(metadata);
+  const deviceInfo = readObject(root.deviceInfo);
+  return parseDeskCatVersion(readString(root.userAgent) || readString(deviceInfo.userAgent));
+}
+
 function countryFromTimezone(timezone: string | null) {
   if (!timezone) return null;
   if (timezone === 'Asia/Shanghai') return 'CN';
@@ -641,7 +652,7 @@ function buildUsers(
   for (const device of devices) {
     const user = ensure(device.device_id);
     user.platform = device.platform;
-    user.appVersion = device.app_version;
+    user.appVersion = device.app_version || appVersionFromMetadata(device.metadata);
     user.firstSeenAt = device.first_seen_at;
     user.lastSeenAt = device.last_seen_at;
     user.metadata = device.metadata ?? null;
@@ -750,8 +761,8 @@ function buildUsers(
       };
     })
     .sort((a, b) =>
-      b.totals.durationMs - a.totals.durationMs ||
       String(b.lastSeenAt ?? '').localeCompare(String(a.lastSeenAt ?? '')) ||
+      b.totals.durationMs - a.totals.durationMs ||
       String(a.deviceId).localeCompare(String(b.deviceId))
     );
 }

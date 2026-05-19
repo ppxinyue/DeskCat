@@ -78,6 +78,11 @@ function safeText(value: unknown, maxLength = 200) {
   return text ? text.slice(0, maxLength) : null;
 }
 
+function parseDeskCatVersion(userAgent: string | null) {
+  const match = userAgent?.match(/\bDeskCat\/([^\s]+)/i);
+  return match?.[1]?.slice(0, 80) ?? null;
+}
+
 function getRequestIp(req: Request) {
   const forwardedFor = req.headers.get('x-forwarded-for');
   const firstForwarded = forwardedFor?.split(',')[0]?.trim();
@@ -107,8 +112,8 @@ Deno.serve(async (req) => {
     const supabase = getSupabaseAdmin();
     const now = new Date().toISOString();
     const platform = safeText(payload.platform);
-    const appVersion = safeText(payload.appVersion, 80);
     const userAgent = safeText(payload.userAgent, 500);
+    const appVersion = safeText(payload.appVersion, 80) || parseDeskCatVersion(userAgent);
     const ip = getRequestIp(req);
     const geo = getRequestGeo(req);
 
