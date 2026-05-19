@@ -8,9 +8,17 @@ const EMPTY_ACTIVE_WINDOW = {
   error: null,
 };
 
-function windowsActiveWindowScript() {
+function windowsPowerShellUtf8Prelude() {
   return `
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
 $ErrorActionPreference = 'Stop'
+`;
+}
+
+function windowsActiveWindowScript() {
+  return `${windowsPowerShellUtf8Prelude()}
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -97,6 +105,15 @@ function normalizeWindowsAppName(value) {
   return name.replace(/\.exe$/i, '');
 }
 
+function normalizeWindowsTimelineText(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text
+    .replace(/\uFFFD+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function normalizeCapturedBrowserUrl(value) {
   const url = String(value || '').trim();
   if (!url) return '';
@@ -121,10 +138,10 @@ function parseWindowsActiveWindowJson(stdout) {
   return {
     supported: true,
     appName: normalizeWindowsAppName(parsed.appName),
-    windowTitle: String(parsed.windowTitle || '').trim(),
+    windowTitle: normalizeWindowsTimelineText(parsed.windowTitle),
     url: normalizeCapturedBrowserUrl(parsed.url),
     processId: Number(parsed.processId) || 0,
-    path: String(parsed.path || '').trim(),
+    path: normalizeWindowsTimelineText(parsed.path),
     error: null,
   };
 }
@@ -157,6 +174,7 @@ function readActiveWindowWindows({ execFileFn = execFile, timeout = 2500, log = 
 module.exports = {
   normalizeCapturedBrowserUrl,
   normalizeWindowsAppName,
+  normalizeWindowsTimelineText,
   parseWindowsActiveWindowJson,
   readActiveWindowWindows,
   windowsActiveWindowScript,

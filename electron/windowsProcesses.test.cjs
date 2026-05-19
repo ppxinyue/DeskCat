@@ -3,6 +3,7 @@ const test = require('node:test');
 const {
   createWindowsBackgroundMarkers,
   normalizeProcessName,
+  normalizeWindowsTimelineText,
   normalizeWindowsCommand,
   parseWindowsProcessJson,
   readWindowsProcesses,
@@ -13,6 +14,11 @@ test('normalizes Windows process names across exe casing', () => {
   assert.equal(normalizeProcessName('powershell.exe'), 'powershell');
   assert.equal(normalizeProcessName('Code.EXE'), 'Code');
   assert.equal(normalizeProcessName('WindowsTerminal'), 'WindowsTerminal');
+});
+
+test('removes replacement characters from Windows process text', () => {
+  assert.equal(normalizeWindowsTimelineText('��c���-���'), 'c-');
+  assert.equal(normalizeWindowsTimelineText('  中文 路径  '), '中文 路径');
 });
 
 test('parses CIM process JSON arrays and single objects', () => {
@@ -29,6 +35,16 @@ test('parses CIM process JSON arrays and single objects', () => {
   assert.deepEqual(single, [{ pid: 12, name: 'Spotify', commandLine: '' }]);
 });
 
+test('parses Windows process JSON without preserving mojibake replacement characters', () => {
+  const rows = parseWindowsProcessJson(JSON.stringify([
+    { ProcessId: 20, Name: 'SnippingTool.exe', CommandLine: '��c���-���' },
+  ]));
+
+  assert.deepEqual(rows, [
+    { pid: 20, name: 'SnippingTool', commandLine: 'c-' },
+  ]);
+});
+
 test('invalid CIM JSON fails closed to an empty process list', () => {
   assert.deepEqual(parseWindowsProcessJson('not-json'), []);
   assert.deepEqual(parseWindowsProcessJson(''), []);
@@ -37,6 +53,8 @@ test('invalid CIM JSON fails closed to an empty process list', () => {
 test('Windows process script uses CIM and compressed JSON', () => {
   const script = windowsProcessListScript();
 
+  assert.match(script, /OutputEncoding/);
+  assert.match(script, /UTF8Encoding/);
   assert.match(script, /Get-CimInstance Win32_Process/);
   assert.match(script, /ProcessId,Name,CommandLine/);
   assert.match(script, /ConvertTo-Json -Compress/);

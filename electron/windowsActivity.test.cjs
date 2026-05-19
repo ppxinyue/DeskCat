@@ -3,6 +3,7 @@ const test = require('node:test');
 const {
   normalizeCapturedBrowserUrl,
   normalizeWindowsAppName,
+  normalizeWindowsTimelineText,
   parseWindowsActiveWindowJson,
   readActiveWindowWindows,
   windowsActiveWindowScript,
@@ -18,6 +19,11 @@ test('normalizes browser address bar values captured from Windows UI Automation'
   assert.equal(normalizeCapturedBrowserUrl('https://example.com/docs?q=deskcat'), 'https://example.com/docs?q=deskcat');
   assert.equal(normalizeCapturedBrowserUrl('example.com/docs'), 'https://example.com/docs');
   assert.equal(normalizeCapturedBrowserUrl('search words'), '');
+});
+
+test('removes replacement characters from Windows timeline text', () => {
+  assert.equal(normalizeWindowsTimelineText('DeskCat Analytics ���� 2 ��x�� - ��� - Microsoft Edge'), 'DeskCat Analytics 2 x - - Microsoft Edge');
+  assert.equal(normalizeWindowsTimelineText('  正常中文窗口  '), '正常中文窗口');
 });
 
 test('parses Windows active window PowerShell JSON into timeline shape', () => {
@@ -53,6 +59,19 @@ test('parses captured browser URLs into Windows timeline snapshots', () => {
   assert.equal(parsed.url, 'https://github.com/ppxinyue/DeskCat/issues');
 });
 
+test('cleans mojibake replacement characters from captured Windows titles', () => {
+  const parsed = parseWindowsActiveWindowJson(JSON.stringify({
+    appName: 'msedge.exe',
+    windowTitle: 'DeskCat Analytics ���� 2 ��x�� - ��� - Microsoft Edge',
+    url: '',
+    processId: 5678,
+    path: 'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  }));
+
+  assert.equal(parsed.windowTitle.includes('�'), false);
+  assert.equal(parsed.windowTitle, 'DeskCat Analytics 2 x - - Microsoft Edge');
+});
+
 test('invalid Windows active window output fails closed with a supported error', () => {
   const parsed = parseWindowsActiveWindowJson('not-json');
 
@@ -65,6 +84,8 @@ test('invalid Windows active window output fails closed with a supported error',
 test('Windows active window script uses user32 foreground APIs and JSON output', () => {
   const script = windowsActiveWindowScript();
 
+  assert.match(script, /OutputEncoding/);
+  assert.match(script, /UTF8Encoding/);
   assert.match(script, /GetForegroundWindow/);
   assert.match(script, /GetWindowText/);
   assert.match(script, /GetWindowThreadProcessId/);

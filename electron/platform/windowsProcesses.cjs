@@ -1,16 +1,33 @@
 const { execFile } = require('node:child_process');
 
-function windowsProcessListScript() {
+function windowsPowerShellUtf8Prelude() {
   return `
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[Console]::OutputEncoding = $utf8NoBom
+$OutputEncoding = $utf8NoBom
 $ErrorActionPreference = 'Stop'
+`;
+}
+
+function windowsProcessListScript() {
+  return `${windowsPowerShellUtf8Prelude()}
 Get-CimInstance Win32_Process |
   Select-Object ProcessId,Name,CommandLine |
   ConvertTo-Json -Compress -Depth 2
 `;
 }
 
+function normalizeWindowsTimelineText(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text
+    .replace(/\uFFFD+/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function normalizeProcessName(value) {
-  return String(value || '').trim().replace(/\.exe$/i, '');
+  return normalizeWindowsTimelineText(value).replace(/\.exe$/i, '');
 }
 
 function parseWindowsProcessJson(stdout) {
@@ -27,7 +44,7 @@ function parseWindowsProcessJson(stdout) {
     .map((row) => ({
       pid: Number(row.ProcessId ?? row.processId) || 0,
       name: normalizeProcessName(row.Name ?? row.name),
-      commandLine: String(row.CommandLine ?? row.commandLine ?? '').trim(),
+      commandLine: normalizeWindowsTimelineText(row.CommandLine ?? row.commandLine ?? ''),
     }))
     .filter((row) => row.pid || row.name || row.commandLine);
 }
@@ -156,6 +173,7 @@ function createWindowsBackgroundMarkers(processes, { musicAppKeywords = [], ownP
 module.exports = {
   createWindowsBackgroundMarkers,
   normalizeProcessName,
+  normalizeWindowsTimelineText,
   normalizeWindowsCommand,
   parseWindowsProcessJson,
   readWindowsProcesses,
