@@ -38,6 +38,7 @@ const { createDeferredWindowShowController, createPetVisibilityController } = re
 const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
 const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
 const { bundledIconCandidates, shouldHideApplicationMenu, shouldUseNativeWindowsIcon } = require('./appIcons.cjs');
+const { decodeDeskcatFileUrl } = require('./fileUrls.cjs');
 const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
 const { applyDefaultLaunchAtLogin, readLaunchAtLogin, setLaunchAtLogin } = require('./loginItems.cjs');
 const {
@@ -4603,7 +4604,7 @@ function registerProtocols() {
     });
   });
   protocol.handle('deskcat-file', async (request) => {
-    const filePath = decodeURIComponent(new URL(request.url).pathname.replace(/^\/+/, ''));
+    const filePath = decodeDeskcatFileUrl(request.url);
     return new Response(await fsp.readFile(filePath), {
       headers: { 'content-type': contentType(filePath) },
     });

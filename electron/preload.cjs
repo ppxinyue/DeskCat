@@ -1,4 +1,5 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const { encodeDeskcatFileUrl } = require('./fileUrls.cjs');
 
 const label = process.argv.find((arg) => arg.startsWith('--deskcat-label='))?.split('=')[1] ?? 'pet';
 
@@ -44,6 +45,6 @@ contextBridge.exposeInMainWorld('deskCat', {
     return ipcRenderer.invoke('deskcat:open-dialog', options ?? {});
   },
   convertFileSrc(path) {
-    return `deskcat-file:///${encodeURIComponent(path)}`;
+    return encodeDeskcatFileUrl(path);
   },
 });
