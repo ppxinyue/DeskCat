@@ -28,7 +28,7 @@ test('electron:start rebuilds production assets before launching Electron', () =
 });
 
 test('macOS packaging script remains scoped to mac targets', () => {
-  assert.match(script('electron:build:mac'), /electron-builder --mac dmg --x64 --arm64 --publish never/);
+  assert.match(script('electron:build:mac'), /electron-builder --mac dmg zip --x64 --arm64 --publish never/);
   assert.doesNotMatch(script('electron:build:mac'), /--win|--ia32/);
 });
 
