@@ -6,6 +6,7 @@ const metricsEl = document.querySelector('#metrics');
 const dailyChartEl = document.querySelector('#daily-chart');
 const dailySummaryEl = document.querySelector('#daily-summary');
 const trendChartEl = document.querySelector('#trend-chart');
+const trendSummaryEl = document.querySelector('#trend-summary');
 const featureListEl = document.querySelector('#feature-list');
 const featureUserTableEl = document.querySelector('#feature-user-table');
 const dailyUserUsageTableEl = document.querySelector('#daily-user-usage-table');
@@ -207,13 +208,12 @@ function renderTrendSeries(rows, config) {
   const height = 150;
   const padding = { top: 14, right: 22, bottom: 26, left: 62 };
   const max = Math.max(1, ...rows.map((row) => Number(row[config.key] || 0)));
-  const latest = rows.at(-1) || {};
-  const latestValue = Number(latest[config.key] || 0);
+  const total = rows.reduce((sum, row) => sum + Number(row[config.key] || 0), 0);
   return `
     <section class="trend-card">
       <div class="trend-card-head">
         <strong><i class="${config.className}"></i>${config.label}</strong>
-        <span>${config.format(latestValue)}</span>
+        <span>Total ${config.format(total)}</span>
       </div>
       <div class="chart-scroll">
         <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${config.label} daily trend">
@@ -232,8 +232,12 @@ function renderDailyTrends(data) {
   const rows = data.dailyTrends || [];
   if (rows.length === 0) {
     trendChartEl.innerHTML = '<div class="empty">No daily trend data yet.</div>';
+    trendSummaryEl.textContent = '';
     return;
   }
+  const downloadsTotal = rows.reduce((sum, row) => sum + Number(row.downloads || 0), 0);
+  const viewsTotal = rows.reduce((sum, row) => sum + Number(row.views || 0), 0);
+  trendSummaryEl.textContent = `Total ${formatNumber(downloadsTotal)} downloads · ${formatNumber(viewsTotal)} views`;
   trendChartEl.innerHTML = `
     ${renderTrendSeries(rows, { key: 'downloads', label: 'Downloads', className: 'downloads', format: (value) => formatNumber(Math.round(value)) })}
     ${renderTrendSeries(rows, { key: 'views', label: 'Views', className: 'views', format: (value) => formatNumber(Math.round(value)) })}
