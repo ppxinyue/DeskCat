@@ -162,6 +162,7 @@ type RecentEvent = {
   feature: string;
   count: number;
   duration_ms: number;
+  metadata?: Record<string, unknown> | null;
   client_created_at: string;
   received_at: string;
 };
@@ -666,8 +667,46 @@ function buildNewUsersToday(devices: DeviceMetric[], timelineRows: RecentEvent[]
       const metadata = device.metadata ?? null;
       const root = readObject(metadata);
       const deviceTimelineRows = (timelineByDevice.get(device.device_id) ?? [])
-        .sort((a, b) => String(b.client_created_at).localeCompare(String(a.client_created_at)));
-      const durationMs = deviceTimelineRows.reduce((total, row) => total + Number(row.duration_ms ?? 0), 0);
+        .sort((a, b) => String(a.client_created_at).localeCompare(String(b.client_created_at)));
+      const activityGroups = new Map<string, {
+        appName: string | null;
+        windowTitle: string | null;
+        category: string | null;
+        domain: string | null;
+        url: string | null;
+        eventCount: number;
+        durationMs: number;
+        firstEventAt: string | null;
+        lastEventAt: string | null;
+      }>();
+      for (const row of deviceTimelineRows) {
+        const eventMetadata = readObject(row.metadata);
+        const appName = readString(eventMetadata.appName);
+        const windowTitle = readString(eventMetadata.windowTitle);
+        const category = readString(eventMetadata.category);
+        const domain = readString(eventMetadata.domain);
+        const url = readString(eventMetadata.url);
+        const key = [appName, windowTitle, domain, category].map((value) => value ?? '').join('\n');
+        const group = activityGroups.get(key) ?? {
+          appName,
+          windowTitle,
+          category,
+          domain,
+          url,
+          eventCount: 0,
+          durationMs: 0,
+          firstEventAt: null,
+          lastEventAt: null,
+        };
+        group.eventCount += 1;
+        group.durationMs = Math.max(group.durationMs, Number(row.duration_ms ?? 0));
+        group.firstEventAt = group.firstEventAt && group.firstEventAt < row.client_created_at ? group.firstEventAt : row.client_created_at;
+        group.lastEventAt = group.lastEventAt && group.lastEventAt > row.client_created_at ? group.lastEventAt : row.client_created_at;
+        activityGroups.set(key, group);
+      }
+      const activityEntries = Array.from(activityGroups.values())
+        .sort((a, b) => String(b.lastEventAt ?? '').localeCompare(String(a.lastEventAt ?? '')));
+      const durationMs = activityEntries.reduce((total, row) => total + Number(row.durationMs ?? 0), 0);
       const useCount = deviceTimelineRows.reduce((total, row) => total + Number(row.count ?? 0), 0);
       return {
         deviceId: device.device_id,
@@ -681,13 +720,18 @@ function buildNewUsersToday(devices: DeviceMetric[], timelineRows: RecentEvent[]
           eventCount: deviceTimelineRows.length,
           useCount,
           durationMs,
-          firstEventAt: deviceTimelineRows.at(-1)?.client_created_at ?? null,
-          lastEventAt: deviceTimelineRows[0]?.client_created_at ?? null,
-          entries: deviceTimelineRows.slice(0, 8).map((row) => ({
-            eventName: row.event_name,
-            count: Number(row.count ?? 0),
-            durationMs: Number(row.duration_ms ?? 0),
-            clientCreatedAt: row.client_created_at,
+          firstEventAt: deviceTimelineRows[0]?.client_created_at ?? null,
+          lastEventAt: deviceTimelineRows.at(-1)?.client_created_at ?? null,
+          entries: activityEntries.slice(0, 8).map((row) => ({
+            appName: row.appName,
+            windowTitle: row.windowTitle,
+            category: row.category,
+            domain: row.domain,
+            url: row.url,
+            eventCount: row.eventCount,
+            durationMs: Number(row.durationMs ?? 0),
+            firstEventAt: row.firstEventAt,
+            lastEventAt: row.lastEventAt,
           })),
         },
       };
@@ -1083,12 +1127,12 @@ Deno.serve(async (req) => {
       supabase.from('page_view_events').select('id', { count: 'exact', head: true }),
       getPublicStatsFallback().catch(() => null),
       supabase.from('telemetry_events')
-        .select('device_id,event_name,feature,count,duration_ms,client_created_at,received_at')
+        .select('device_id,event_name,feature,count,duration_ms,metadata,client_created_at,received_at')
         .gte('received_at', `${startDate}T00:00:00.000Z`)
         .order('received_at', { ascending: false })
         .limit(1000),
       supabase.from('telemetry_events')
-        .select('device_id,event_name,feature,count,duration_ms,client_created_at,received_at')
+        .select('device_id,event_name,feature,count,duration_ms,metadata,client_created_at,received_at')
         .eq('feature', 'timeline')
         .gte('client_created_at', today.startIso)
         .lt('client_created_at', today.endIso)

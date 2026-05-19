@@ -222,16 +222,38 @@ button {
 .timeline-mini {
   display: grid;
   gap: 6px;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .timeline-mini-row {
-  align-items: center;
+  align-items: start;
   background: #f8f9fa;
   border-radius: 6px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  gap: 5px;
   padding: 7px 9px;
+}
+
+.timeline-mini-row div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.timeline-mini-row strong,
+.timeline-mini-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-mini-row strong {
+  font-size: 12px;
+}
+
+.timeline-mini-row b {
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .empty.small {

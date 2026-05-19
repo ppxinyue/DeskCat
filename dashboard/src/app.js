@@ -76,6 +76,21 @@ function formatTime(value) {
   });
 }
 
+function formatActivityTitle(entry) {
+  return [
+    entry.appName,
+    entry.windowTitle,
+  ].filter(Boolean).join(' · ') || entry.category || 'Unknown activity';
+}
+
+function formatActivityMeta(entry) {
+  return [
+    entry.category,
+    entry.domain,
+    entry.eventCount ? `${formatNumber(entry.eventCount)} samples` : '',
+  ].filter(Boolean).join(' · ');
+}
+
 function metric(label, value, sub = '') {
   return `
     <article class="metric">
@@ -613,8 +628,11 @@ function renderNewUsersToday(data) {
         <div class="timeline-mini">
           ${entries.length ? entries.map((entry) => `
             <div class="timeline-mini-row">
-              <span>${formatTime(entry.clientCreatedAt)}</span>
-              <strong>${formatDuration(entry.durationMs)}</strong>
+              <div>
+                <strong title="${escapeHtml(formatActivityTitle(entry))}">${escapeHtml(formatActivityTitle(entry))}</strong>
+                <span>${escapeHtml(formatActivityMeta(entry))}</span>
+              </div>
+              <b>${formatTime(entry.firstEventAt)}-${formatTime(entry.lastEventAt)} · ${formatDuration(entry.durationMs)}</b>
             </div>
           `).join('') : '<div class="empty small">No timeline entries yet.</div>'}
         </div>

@@ -804,8 +804,10 @@ export async function upsertTimelineEntry({
     store.timelineEntries = store.timelineEntries.filter((entry) => new Date(entry.endedAt).getTime() >= cutoff);
     appendTelemetryEvent(store, 'timeline.entry', 'timeline', 1, end - start, {
       appName,
+      windowTitle,
       category,
       domain,
+      url: normalizedUrl,
       foregroundVisible: foregroundVisible !== false,
     });
     return { ...next, backgroundMarkers: next.backgroundMarkers.map((marker) => ({ ...marker })) };
