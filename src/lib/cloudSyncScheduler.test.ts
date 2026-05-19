@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { CLOUD_SYNC_PENDING_EVENT, hasPendingCloudSync, recordTelemetryEvent, setSetting, syncCloudBackup } from './db.ts';
+import {
+  CLOUD_SYNC_PENDING_EVENT,
+  CLOUD_SYNC_STORE_KEY,
+  getCloudSyncStatus,
+  hasPendingCloudSync,
+  recordTelemetryEvent,
+  setSetting,
+  syncCloudBackup,
+} from './db.ts';
 
 class MemoryStorage {
   private store = new Map<string, string>();
@@ -45,6 +53,30 @@ test('pending cloud sync requires an endpoint and includes device registration',
   storage.clear();
 
   assert.equal(await hasPendingCloudSync(), true);
+});
+
+test('new installs use the deskcat sync endpoint by default', async () => {
+  storage.clear();
+
+  const status = await getCloudSyncStatus();
+  assert.equal(status.endpoint, 'https://vuxzqebeirynkdyonzud.functions.supabase.co/deskcat-sync');
+});
+
+test('legacy desksprite sync endpoint migrates to the deskcat endpoint', async () => {
+  storage.clear();
+  storage.setItem(CLOUD_SYNC_STORE_KEY, JSON.stringify({
+    settings: {
+      cloudSyncEndpoint: 'https://vuxzqebeirynkdyonzud.functions.supabase.co/desksprite-sync',
+      cloudSyncIngestToken: 'legacy-token',
+    },
+    cloudSync: {
+      deviceId: 'legacy-device',
+    },
+  }));
+
+  const status = await getCloudSyncStatus();
+  assert.equal(status.endpoint, 'https://vuxzqebeirynkdyonzud.functions.supabase.co/deskcat-sync');
+  assert.equal(status.deviceId, 'legacy-device');
 });
 
 test('pending cloud sync includes queued telemetry', async () => {

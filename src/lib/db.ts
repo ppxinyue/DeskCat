@@ -164,7 +164,8 @@ export const CLOUD_SYNC_PENDING_EVENT = 'deskcat:cloud-sync-pending';
 export const CLOUD_SYNC_STORE_KEY = 'deskcat:electron-db:v1';
 export const TIMELINE_MOJIBAKE_REPAIR_KEY = 'deskcat:timeline-mojibake-repair:v1';
 const STORE_KEY = CLOUD_SYNC_STORE_KEY;
-const DEFAULT_CLOUD_SYNC_ENDPOINT = 'https://vuxzqebeirynkdyonzud.functions.supabase.co/desksprite-sync';
+const LEGACY_CLOUD_SYNC_ENDPOINT = 'https://vuxzqebeirynkdyonzud.functions.supabase.co/desksprite-sync';
+const DEFAULT_CLOUD_SYNC_ENDPOINT = 'https://vuxzqebeirynkdyonzud.functions.supabase.co/deskcat-sync';
 const DEFAULT_CLOUD_SYNC_INGEST_TOKEN = '1668aba1ee2b3e4a71ac6d65c385a2641f8573b9989dc9fd5ded30b796b27025';
 
 function now() {
@@ -179,12 +180,23 @@ function createDeviceId() {
 
 function getDefaultCloudSettings(): Record<string, string> {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  const endpoint = env?.VITE_CLOUD_SYNC_ENDPOINT?.trim() || DEFAULT_CLOUD_SYNC_ENDPOINT;
+  const configuredEndpoint = env?.VITE_CLOUD_SYNC_ENDPOINT?.trim();
+  const endpoint = configuredEndpoint && configuredEndpoint !== LEGACY_CLOUD_SYNC_ENDPOINT
+    ? configuredEndpoint
+    : DEFAULT_CLOUD_SYNC_ENDPOINT;
   const ingestToken = env?.VITE_CLOUD_SYNC_INGEST_TOKEN?.trim() || DEFAULT_CLOUD_SYNC_INGEST_TOKEN;
   return {
     cloudSyncEndpoint: endpoint,
     cloudSyncIngestToken: ingestToken,
   };
+}
+
+function normalizeCloudSettings(settings: Record<string, string>, defaults: Record<string, string>) {
+  const nextSettings = { ...defaults, ...settings };
+  if (nextSettings.cloudSyncEndpoint === LEGACY_CLOUD_SYNC_ENDPOINT) {
+    nextSettings.cloudSyncEndpoint = DEFAULT_CLOUD_SYNC_ENDPOINT;
+  }
+  return nextSettings;
 }
 
 function createStore(): Store {
@@ -226,10 +238,7 @@ function loadStore(): Store {
     return {
       ...base,
       ...parsed,
-      settings: {
-        ...base.settings,
-        ...(parsed.settings ?? {}),
-      },
+      settings: normalizeCloudSettings(parsed.settings ?? {}, base.settings),
       telemetryEvents: Array.isArray(parsed.telemetryEvents) ? parsed.telemetryEvents : [],
       timelineEntries: Array.isArray(parsed.timelineEntries) ? parsed.timelineEntries : [],
       cloudSync: {

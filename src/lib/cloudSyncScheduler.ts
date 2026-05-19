@@ -1,4 +1,4 @@
-import { CLOUD_SYNC_PENDING_EVENT, CLOUD_SYNC_STORE_KEY, hasPendingCloudSync, syncCloudBackup } from '@/lib/db';
+import { CLOUD_SYNC_PENDING_EVENT, CLOUD_SYNC_STORE_KEY, getCloudSyncStatus, hasPendingCloudSync, syncCloudBackup } from '@/lib/db';
 
 const STARTUP_SYNC_DELAY_MS = 12_000;
 const PERIODIC_SYNC_INTERVAL_MS = 5 * 60_000;
@@ -12,21 +12,73 @@ let changeTimer: number | null = null;
 let inFlight: Promise<void> | null = null;
 let lastAttemptAt = 0;
 
+function logCloudSync(message: string, details: Record<string, unknown> = {}) {
+  console.warn(`[cloud-sync] ${message}`, {
+    ...details,
+    at: new Date().toISOString(),
+  });
+}
+
 async function runCloudSync(reason: string, force = false) {
   const now = Date.now();
-  if (inFlight) return inFlight;
-  if (!force && now - lastAttemptAt < MIN_SYNC_GAP_MS) return;
+  if (inFlight) {
+    logCloudSync('reuse in-flight sync', { reason });
+    return inFlight;
+  }
+  if (!force && now - lastAttemptAt < MIN_SYNC_GAP_MS) {
+    logCloudSync('skip: minimum gap', { reason, elapsedMs: now - lastAttemptAt });
+    return;
+  }
 
   inFlight = (async () => {
     try {
-      if (!(await hasPendingCloudSync())) return;
+      const status = await getCloudSyncStatus();
+      logCloudSync('attempt', {
+        reason,
+        endpoint: status.endpoint,
+        deviceId: status.deviceId,
+        pendingBackup: status.pendingBackup,
+        pendingTelemetryEvents: status.pendingTelemetryEvents,
+        lastDeviceSyncAt: status.lastDeviceSyncAt,
+        lastSyncError: status.lastSyncError,
+      });
+      if (!(await hasPendingCloudSync())) {
+        logCloudSync('skip: no pending work', {
+          reason,
+          endpoint: status.endpoint,
+          pendingBackup: status.pendingBackup,
+          pendingTelemetryEvents: status.pendingTelemetryEvents,
+          lastDeviceSyncAt: status.lastDeviceSyncAt,
+        });
+        return;
+      }
       lastAttemptAt = Date.now();
       const result = await syncCloudBackup();
       if (!result.ok) {
-        console.warn(`Cloud sync skipped (${reason}):`, result.lastSyncError);
+        logCloudSync('failed', {
+          reason,
+          endpoint: result.endpoint,
+          deviceId: result.deviceId,
+          pendingBackup: result.pendingBackup,
+          pendingTelemetryEvents: result.pendingTelemetryEvents,
+          lastSyncError: result.lastSyncError,
+        });
+        return;
       }
+      logCloudSync('success', {
+        reason,
+        endpoint: result.endpoint,
+        deviceId: result.deviceId,
+        uploadedTelemetryEvents: result.uploadedTelemetryEvents,
+        pendingBackup: result.pendingBackup,
+        pendingTelemetryEvents: result.pendingTelemetryEvents,
+        lastDeviceSyncAt: result.lastDeviceSyncAt,
+      });
     } catch (error) {
-      console.warn(`Cloud sync failed (${reason}):`, error);
+      logCloudSync('exception', {
+        reason,
+        error: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       inFlight = null;
     }
