@@ -262,7 +262,7 @@ if (featureStage) {
 }
 
 const languageButton = document.querySelector('[data-lang-toggle]');
-let currentLanguage = localStorage.getItem('deskcat-site-lang') || 'en';
+let currentLanguage = localStorage.getItem('deskcat-site-lang') || 'zh';
 
 function renderManifestoLetter(lang) {
   const letter = document.querySelector('[data-manifesto-letter]');
