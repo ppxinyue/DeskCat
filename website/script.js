@@ -5,10 +5,8 @@ const copy = {
     navDownload: 'Download',
     heroSubtitle: 'Turn your favorite companion into a smart desktop AI.',
     heroFootnote: 'Move your cursor. The cats follow.',
-    liveUsersLabel: 'Total users',
     liveDownloadsLabel: 'Downloads',
     liveViewsLabel: 'Views',
-    githubStarsLabel: 'Stars',
     siteDownloadsLabel: 'Product site',
     siteViewsLabel: 'Site views',
     githubViewsLabel: 'GitHub views',
@@ -77,10 +75,8 @@ ps: This software still has many imperfections, so thank you for being patient w
     navDownload: '下载',
     heroSubtitle: '人！咪要住进你的电脑',
     heroFootnote: '移动鼠标，猫猫会跟上来。',
-    liveUsersLabel: '用户数',
     liveDownloadsLabel: '下载量',
     liveViewsLabel: '总浏览量',
-    githubStarsLabel: 'GitHub Star',
     siteDownloadsLabel: '产品网站',
     siteViewsLabel: '网页浏览量',
     githubViewsLabel: 'GitHub 浏览量',
@@ -304,10 +300,8 @@ languageButton.addEventListener('click', () => {
 
 applyLanguage(currentLanguage);
 
-const totalUsersEl = document.querySelector('[data-total-users]');
 const totalDownloadsEl = document.querySelector('[data-total-downloads]');
 const totalViewsEl = document.querySelector('[data-total-views]');
-const githubStarsEls = document.querySelectorAll('[data-github-stars], [data-github-stars-inline]');
 const productDownloadsEl = document.querySelector('[data-product-downloads]');
 const githubDownloadsEl = document.querySelector('[data-github-downloads]');
 const productSiteViewsEl = document.querySelector('[data-product-site-views]');
@@ -338,14 +332,12 @@ function bumpDownloadStats() {
 }
 
 async function refreshPublicStats() {
-  if (!publicStatsUrl || !totalUsersEl) return;
+  if (!publicStatsUrl) return;
   const response = await fetch(publicStatsUrl, { cache: 'no-store' });
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(data.error || `Stats failed: ${response.status}`);
-  totalUsersEl.textContent = formatStatNumber(data.totalDeviceVersions ?? data.totalUsers);
   if (totalDownloadsEl) totalDownloadsEl.textContent = formatStatNumber(data.totalDownloads);
   if (totalViewsEl) totalViewsEl.textContent = formatStatNumber(data.totalViews);
-  for (const node of githubStarsEls) node.textContent = formatStatNumber(data.githubStars);
   if (productDownloadsEl) productDownloadsEl.textContent = formatStatNumber(data.productSiteDownloads);
   if (githubDownloadsEl) githubDownloadsEl.textContent = formatStatNumber(data.githubDownloads);
   if (productSiteViewsEl) productSiteViewsEl.textContent = formatStatNumber(data.productSiteViews);
@@ -456,10 +448,8 @@ function revealQrImage(image) {
 
 trackPageView();
 refreshPublicStats().catch(() => {
-  if (totalUsersEl) totalUsersEl.textContent = '--';
   if (totalDownloadsEl) totalDownloadsEl.textContent = '--';
   if (totalViewsEl) totalViewsEl.textContent = '--';
-  for (const node of githubStarsEls) node.textContent = '--';
   if (productDownloadsEl) productDownloadsEl.textContent = '--';
   if (githubDownloadsEl) githubDownloadsEl.textContent = '--';
   if (productSiteViewsEl) productSiteViewsEl.textContent = '--';
