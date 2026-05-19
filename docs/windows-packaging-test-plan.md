@@ -68,7 +68,7 @@ pnpm electron:build:win:x64
 3. Confirm `release` contains an x64 NSIS installer named like:
 
 ```text
-DeskCat-1.1.6-x64.exe
+DeskCat-2.0.0-x64.exe
 ```
 
 4. Install and launch DeskCat.
