@@ -25,7 +25,7 @@ import { LANGUAGE_OPTIONS } from '@/i18n';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import type { ComponentProps, MouseEvent, ReactNode } from 'react';
+import type { ComponentProps, MouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 export type SettingsSection =
@@ -51,6 +51,13 @@ const ALLOWED_STATIC_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', '
 const ALLOWED_GIF_EXTENSIONS = new Set(['gif', 'webp']);
 const MASKED_API_KEY = '••••••••';
 const PROFILE_EXAMPLE_KEY = 'example';
+
+function isWindowsSettingsRuntime(
+  platform = typeof navigator === 'undefined' ? '' : navigator.platform,
+  userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent,
+): boolean {
+  return /win/i.test(`${platform || ''} ${userAgent || ''}`);
+}
 
 const SECTION_GROUPS: Array<{
   label: string;
@@ -334,21 +341,51 @@ function EditableInput({
   onChange,
   className,
   type = 'text',
+  deferCommit = false,
   ...props
 }: Omit<ComponentProps<typeof Input>, 'value' | 'onChange'> & {
   value: string | number;
   onChange: (value: string) => void;
+  deferCommit?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value ?? ''));
+  const composingRef = useRef(false);
+
+  useEffect(() => {
+    if (editing && deferCommit) return;
+    setDraft(String(value ?? ''));
+  }, [deferCommit, editing, value]);
+
+  const commitDraft = () => {
+    if (!deferCommit) return;
+    const nextValue = draft;
+    if (nextValue !== String(value ?? '')) onChange(nextValue);
+  };
 
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Input
         {...props}
         type={type}
-        value={value}
+        value={deferCommit ? draft : value}
         readOnly={!editing}
-        onChange={(event) => onChange(event.target.value)}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={(event) => {
+          composingRef.current = false;
+          if (deferCommit) setDraft(event.currentTarget.value);
+        }}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          if (deferCommit) {
+            setDraft(nextValue);
+            return;
+          }
+          if (!composingRef.current) onChange(nextValue);
+        }}
+        onBlur={commitDraft}
         className={className}
       />
       <Button
@@ -356,7 +393,10 @@ function EditableInput({
         variant="outline"
         size="sm"
         className="h-8 shrink-0 px-2.5 text-[12px]"
-        onClick={() => setEditing((next) => !next)}
+        onClick={() => {
+          if (editing) commitDraft();
+          setEditing((next) => !next);
+        }}
       >
         {editing ? '完成' : '修改'}
       </Button>
@@ -1015,10 +1055,11 @@ function TimelineSection({
     timelineScaleRef.current = timelineScale;
     const node = scrollRef.current;
     const pendingScrollLeft = pendingTimelineScrollLeftRef.current;
-    if (!node || pendingScrollLeft === null) return;
-    pendingTimelineScrollLeftRef.current = null;
-    const maxScrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
-    node.scrollLeft = clampNumber(pendingScrollLeft, 0, maxScrollLeft);
+    if (node && pendingScrollLeft !== null) {
+      pendingTimelineScrollLeftRef.current = null;
+      const maxScrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
+      node.scrollLeft = clampNumber(pendingScrollLeft, 0, maxScrollLeft);
+    }
   }, [timelineScale]);
 
   useEffect(() => {
@@ -2752,6 +2793,7 @@ function ImageSection() {
 
   const config = mediaConfig[selectedState];
   const scheme = config.mediaMode;
+  const isWindowsControls = isWindowsSettingsRuntime();
   const isGifScheme = scheme === 'gif';
   const currentStateFrames = isGifScheme ? userGifs[selectedState] || [] : userFrames[selectedState] || [];
   const defaultFrames = isGifScheme ? config.defaultGifAssets : config.defaultAssets;
@@ -2814,6 +2856,18 @@ function ImageSection() {
     });
   };
 
+  const handleWindowsStatePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, state: PetState) => {
+    if (!isWindowsControls || state === selectedState) return;
+    event.preventDefault();
+    setSelectedState(state);
+  };
+
+  const handleWindowsSchemePointerDown = (event: ReactPointerEvent<HTMLButtonElement>, nextMode: 'gif' | 'image') => {
+    if (!isWindowsControls || nextMode === config.mediaMode) return;
+    event.preventDefault();
+    void handleSchemeChange(nextMode);
+  };
+
   return (
     <div className="quiet-card space-y-4 rounded-[11px] p-4">
       {/* State Tabs */}
@@ -2830,38 +2884,40 @@ function ImageSection() {
               key={state}
               className={`relative rounded-[11px] px-4 py-2 text-[13px] font-medium transition-all duration-200 ${
                 isActive
-                  ? 'bg-background/78 text-foreground shadow-[0_1px_0_rgba(255,255,255,0.70)_inset,0_6px_16px_rgba(42,38,31,0.06)]'
-                  : 'text-muted-foreground hover:bg-background/42 hover:text-foreground'
+                  ? 'bg-[#1f8fff] text-white shadow-[0_1px_0_rgba(255,255,255,0.42)_inset,0_8px_18px_rgba(31,143,255,0.22)]'
+                  : 'bg-background/52 text-[#4f5965] shadow-[0_1px_0_rgba(255,255,255,0.6)_inset] hover:bg-background/78 hover:text-foreground'
               }`}
+              onPointerDown={(event) => handleWindowsStatePointerDown(event, state)}
               onClick={() => setSelectedState(state)}
             >
               {meta.label}
-              <span className="ml-1.5 text-[11px] text-muted-foreground">({defaultCount + count})</span>
+              <span className={`ml-1.5 text-[11px] ${isActive ? 'text-white/82' : 'text-muted-foreground'}`}>({defaultCount + count})</span>
             </button>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 rounded-[10px] bg-white/42 p-1 shadow-[0_8px_22px_rgba(52,64,84,0.052),0_1px_0_rgba(255,255,255,0.68)_inset] dark:bg-white/[0.04]">
+      <div className="grid grid-cols-2 gap-2 rounded-[12px] border border-[#cfd8e3]/70 bg-white/62 p-1.5 shadow-[0_10px_24px_rgba(52,64,84,0.075),0_1px_0_rgba(255,255,255,0.72)_inset] dark:border-white/10 dark:bg-white/[0.055]">
         {([
-          { id: 'gif' as const, label: 'GIF 动图', detail: `${config.defaultGifAssets.length + userGifs[selectedState].length} 个` },
           { id: 'image' as const, label: '图片', detail: `${config.defaultAssets.length + userFrames[selectedState].length} 张` },
+          { id: 'gif' as const, label: 'GIF 动图', detail: `${config.defaultGifAssets.length + userGifs[selectedState].length} 个` },
         ]).map((option) => {
           const active = scheme === option.id;
           return (
             <button
               key={option.id}
               type="button"
-              className={`rounded-[9px] px-3 py-2 text-center transition-all duration-200 ${
+              className={`rounded-[10px] px-3 py-2.5 text-center transition-all duration-150 ${
                 active
-                  ? 'bg-background/78 text-foreground shadow-[0_1px_0_rgba(255,255,255,0.70)_inset,0_6px_16px_rgba(42,38,31,0.06)]'
-                  : 'text-muted-foreground hover:bg-background/42 hover:text-foreground'
+                  ? 'bg-[#1f8fff] text-white shadow-[0_1px_0_rgba(255,255,255,0.42)_inset,0_8px_20px_rgba(31,143,255,0.24)]'
+                  : 'bg-background/55 text-[#4f5965] shadow-[0_1px_0_rgba(255,255,255,0.6)_inset] hover:bg-background/85 hover:text-foreground'
               }`}
+              onPointerDown={(event) => handleWindowsSchemePointerDown(event, option.id)}
               onClick={() => handleSchemeChange(option.id)}
             >
               <span className="block whitespace-nowrap text-[13px] font-medium">
                 {option.label}
-                <span className="text-[12px] font-normal text-muted-foreground">（{option.detail}）</span>
+                <span className={`text-[12px] font-normal ${active ? 'text-white/82' : 'text-muted-foreground'}`}>（{option.detail}）</span>
               </span>
             </button>
           );
@@ -3369,6 +3425,7 @@ function AISection({
             <EditableInput
               value={settings.petName}
               onChange={(value) => updateSetting('petName', value)}
+              deferCommit
               className="w-48"
             />
           </SettingRow>
@@ -3600,11 +3657,6 @@ function GeneralSection({
               </span>
             </SettingRow>
           </SettingsGroup>
-          <div className="space-y-2 pt-1">
-            <Button variant="destructive" size="sm" disabled>清除所有对话历史</Button>
-            <Button variant="destructive" size="sm" disabled>删除所有 API 配置</Button>
-            <Button variant="outline" size="sm" disabled>导出对话资料 (JSON)</Button>
-          </div>
         </>
       )}
 
