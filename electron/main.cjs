@@ -83,6 +83,7 @@ const updaterState = {
   initialized: false,
   checking: false,
   downloaded: false,
+  installRequested: false,
   installPromptOpen: false,
   lastError: '',
   lastCheckAt: 0,
@@ -254,20 +255,116 @@ function broadcastUpdateStatus(status, extra = {}) {
   broadcast('app:update-status', updateStatusPayload({ status, ...extra }));
 }
 
+function writeAppDiagnosticLog(scope, message, details = {}) {
+  const payload = {
+    at: new Date().toISOString(),
+    scope,
+    message,
+    ...details,
+  };
+  const line = JSON.stringify(payload);
+  try {
+    console.warn(`[${scope}] ${message}`, details);
+  } catch {
+    // console logging is best effort during shutdown
+  }
+  try {
+    const userDataPath = app.getPath('userData');
+    fs.mkdirSync(userDataPath, { recursive: true });
+    fs.appendFileSync(path.join(userDataPath, 'deskcat-debug.log'), `${line}\n`, 'utf8');
+  } catch {
+    // file logging is best effort and must never block app behavior
+  }
+}
+
+function createUpdaterLogger() {
+  const log = (level, args) => writeAppDiagnosticLog('updater', level, {
+    text: args.map((item) => item instanceof Error ? item.stack || item.message : String(item)).join(' '),
+  });
+  return {
+    info: (...args) => log('info', args),
+    warn: (...args) => log('warn', args),
+    error: (...args) => log('error', args),
+    debug: (...args) => log('debug', args),
+  };
+}
+
+function cleanupBeforeUpdateInstall() {
+  cleanupRuntime({
+    clearTopmostGuard: () => {
+      if (topmostGuard) clearInterval(topmostGuard);
+      topmostGuard = null;
+    },
+    shortcutRegistry,
+    windows,
+    tray,
+    codexAppServer,
+    claudeChild: claudeCodingState.child,
+  });
+  tray = null;
+  claudeCodingState.child = null;
+  codingState.running = null;
+  claudeCodingState.running = null;
+}
+
+function installDownloadedUpdate(source = 'unknown') {
+  if (!updaterState.downloaded) {
+    writeAppDiagnosticLog('updater', 'install skipped: no downloaded update', { source });
+    return false;
+  }
+  if (updaterState.installRequested) {
+    writeAppDiagnosticLog('updater', 'install skipped: already requested', { source });
+    return true;
+  }
+
+  updaterState.installRequested = true;
+  broadcastUpdateStatus('installing', { source });
+  writeAppDiagnosticLog('updater', 'install requested', {
+    source,
+    platform: process.platform,
+    version: app.getVersion(),
+  });
+
+  if (process.platform === 'win32') {
+    cleanupBeforeUpdateInstall();
+    setTimeout(() => {
+      writeAppDiagnosticLog('updater', 'force exit fallback after install request', { source });
+      app.exit(0);
+    }, 2500).unref?.();
+  }
+
+  try {
+    autoUpdater.quitAndInstall(process.platform === 'win32', true);
+    return true;
+  } catch (error) {
+    updaterState.installRequested = false;
+    updaterState.lastError = error instanceof Error ? error.message : String(error || '');
+    writeAppDiagnosticLog('updater', 'install request failed', {
+      source,
+      error: updaterState.lastError,
+    });
+    broadcastUpdateStatus('error');
+    return false;
+  }
+}
+
 function setupAutoUpdater() {
   if (updaterState.initialized) return;
   updaterState.initialized = true;
 
+  autoUpdater.logger = createUpdaterLogger();
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('checking-for-update', () => {
     updaterState.checking = true;
     updaterState.lastError = '';
+    writeAppDiagnosticLog('updater', 'checking for update', { version: app.getVersion() });
     broadcastUpdateStatus('checking');
   });
 
   autoUpdater.on('update-available', (info) => {
+    writeAppDiagnosticLog('updater', 'update available', { updateVersion: info?.version || '' });
     broadcastUpdateStatus('available', {
       updateVersion: info?.version || '',
       releaseName: info?.releaseName || '',
@@ -276,6 +373,7 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-not-available', (info) => {
     updaterState.checking = false;
+    writeAppDiagnosticLog('updater', 'update not available', { updateVersion: info?.version || '' });
     broadcastUpdateStatus('not-available', { updateVersion: info?.version || '' });
   });
 
@@ -290,6 +388,11 @@ function setupAutoUpdater() {
   autoUpdater.on('update-downloaded', async (info) => {
     updaterState.checking = false;
     updaterState.downloaded = true;
+    updaterState.installRequested = false;
+    writeAppDiagnosticLog('updater', 'update downloaded', {
+      updateVersion: info?.version || '',
+      downloadedFile: info?.downloadedFile || '',
+    });
     broadcastUpdateStatus('downloaded', { updateVersion: info?.version || '' });
     await promptInstallDownloadedUpdate(info);
   });
@@ -297,6 +400,7 @@ function setupAutoUpdater() {
   autoUpdater.on('error', (error) => {
     updaterState.checking = false;
     updaterState.lastError = error instanceof Error ? error.message : String(error || '');
+    writeAppDiagnosticLog('updater', 'error', { error: updaterState.lastError });
     broadcastUpdateStatus('error');
   });
 }
@@ -325,7 +429,7 @@ async function promptInstallDownloadedUpdate(info = {}) {
       ? await dialog.showMessageBox(target, options)
       : await dialog.showMessageBox(options);
     if (result.response === 0) {
-      autoUpdater.quitAndInstall(false, true);
+      installDownloadedUpdate('downloaded-dialog');
     }
   } finally {
     updaterState.installPromptOpen = false;
@@ -4456,9 +4560,7 @@ const handlers = {
   check_accessibility_permission: checkAccessibilityPermission,
   check_for_updates: () => checkForAppUpdates({ manual: true }),
   install_downloaded_update: () => {
-    if (!updaterState.downloaded) return false;
-    autoUpdater.quitAndInstall(false, true);
-    return true;
+    return installDownloadedUpdate('renderer-command');
   },
   timeline_debug_log: timelineDebugLog,
   read_timeline_active_window: readTimelineActiveWindow,

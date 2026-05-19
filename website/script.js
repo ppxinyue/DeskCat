@@ -48,9 +48,9 @@ ps: This software still has many imperfections, so thank you for being patient w
     downloadInstallNote:
       'First launch note: Cat Engineer is too broke to pay Apple’s $99 Developer Program fee, so macOS may say: “Apple could not verify DeskCat is free of malware that may harm your Mac or compromise your privacy.” Please do not panic. Click Done, then open System Settings → Privacy & Security, scroll to Security, find “DeskCat was blocked to protect your Mac,” and click Open Anyway. DeskCat will launch normally after that.',
     downloadPlatformMac: 'macOS',
-    downloadPlatformMacBody: 'GitHub Release v1.1.5',
+    downloadPlatformMacBody: 'GitHub Release v1.1.6',
     downloadPlatformWindows: 'Windows',
-    downloadPlatformWindowsBody: 'GitHub Release v1.1.5',
+    downloadPlatformWindowsBody: 'GitHub Release v1.1.6',
     windowsDownloadTitle: 'Windows build',
     windowsDownloadBody: 'x64 · Windows installer · 272M',
     downloadChoiceEyebrow: 'CHOOSE YOUR CAT DOOR',
@@ -117,9 +117,9 @@ ps：本软件仍有诸多不足，请多多包涵！欢迎在github上点亮sta
     downloadInstallNote:
       '首次打开提醒：猫师傅太穷了，没有充值 Apple Store 的 99 美元年费，所以第一次打开时，系统会提示：“Apple 无法验证‘DeskCat’是否包含可能危害 Mac 安全或泄漏隐私的恶意软件。”请不要惊慌，点击【完成】。然后打开【系统设置 - 隐私与安全性】，向下滑动到【安全性】，找到“已阻止 DeskCat 以保护 Mac”，点击右侧的【仍要打开】，即可正常启动 DeskCat。',
     downloadPlatformMac: 'macOS',
-    downloadPlatformMacBody: 'GitHub Release v1.1.5',
+    downloadPlatformMacBody: 'GitHub Release v1.1.6',
     downloadPlatformWindows: 'Windows',
-    downloadPlatformWindowsBody: 'GitHub Release v1.1.5',
+    downloadPlatformWindowsBody: 'GitHub Release v1.1.6',
     windowsDownloadTitle: 'Windows 版本',
     windowsDownloadBody: 'x64 · Windows 安装包 · 272M',
     downloadChoiceEyebrow: '选择一扇猫门',
