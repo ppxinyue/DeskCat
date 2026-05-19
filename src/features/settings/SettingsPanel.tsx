@@ -11,7 +11,7 @@ import { useSettingsStore, type AppLanguage, type AppSettings, type AvatarRender
 import { useApiConfigStore, type ApiConfig } from '@/features/settings/apiConfigStore';
 import { usePetStore } from '@/features/pet/petStore';
 import { BUILTIN_CLOSEAI_CONFIG, BUILTIN_QUOTA_EXHAUSTED_MESSAGE, BUILTIN_TOKEN_LIMIT, getBuiltinUsageStats } from '@/features/ai/defaultModel';
-import { clearSystemKnowledgePermissionCache } from '@/features/ai/systemKnowledge';
+import { clearSystemKnowledgePermissionCache, isSystemKnowledgeSupportedPlatform } from '@/features/ai/systemKnowledge';
 import { DEFAULT_SYSTEM_PROMPT, ORB_SYSTEM_PROMPT, normalizeOrbSystemPrompt, normalizeSystemPrompt } from '@/features/ai/systemPrompt';
 import { PROVIDER_PRESETS, getProviderName } from '@/features/ai/providers';
 import { BUILTIN_STT_MODEL, BUILTIN_TTS_CHARS_LIMIT, BUILTIN_TTS_MODEL, BUILTIN_STT_SECONDS_LIMIT, getBuiltinVoiceUsageStats } from '@/features/voice/voiceService';
@@ -3026,6 +3026,7 @@ function AISection({
     message: '',
     ok: null,
   });
+  const systemKnowledgeSupported = isSystemKnowledgeSupportedPlatform(navigator.platform, navigator.userAgent);
   const [systemPromptEditing, setSystemPromptEditing] = useState(false);
   const defaultConfig = configs.find((config) => config.isDefault) ?? configs[0] ?? null;
   const builtinQuotaExhausted = Boolean(builtinUsage && (
@@ -3035,6 +3036,12 @@ function AISection({
   ));
 
   const requestSystemKnowledgePermissions = async () => {
+    if (!systemKnowledgeSupported) {
+      await updateSetting('systemKnowledgeEnabled', false);
+      clearSystemKnowledgePermissionCache();
+      setSystemKnowledgeCheck({ checking: false, message: 'Windows 暂不支持，系统知识库仅在 macOS 可用。', ok: false });
+      return;
+    }
     setSystemKnowledgeCheck({ checking: true, message: '正在请求系统权限...', ok: null });
     const result = await invoke<{
       ok: boolean;
@@ -3056,6 +3063,13 @@ function AISection({
       message: result.ok ? '日历和提醒事项权限可用' : failed.join('；') || '权限不可用，已打开系统设置',
     });
   };
+
+  useEffect(() => {
+    if (systemKnowledgeSupported || !settings.systemKnowledgeEnabled) return;
+    updateSetting('systemKnowledgeEnabled', false).catch(() => {});
+    clearSystemKnowledgePermissionCache();
+    setSystemKnowledgeCheck({ checking: false, message: 'Windows 暂不支持，系统知识库仅在 macOS 可用。', ok: false });
+  }, [settings.systemKnowledgeEnabled, systemKnowledgeSupported, updateSetting]);
 
   const setCodingProviderEnabled = async (provider: CodingProvider, enabled: boolean) => {
     const otherProvider: CodingProvider = provider === 'claude' ? 'codex' : 'claude';
@@ -3298,21 +3312,32 @@ function AISection({
                 variant="outline"
                 size="sm"
                 className="h-7 px-2"
-                disabled={systemKnowledgeCheck.checking || !settings.systemKnowledgeEnabled}
+                disabled={!systemKnowledgeSupported || systemKnowledgeCheck.checking || !settings.systemKnowledgeEnabled}
                 onClick={requestSystemKnowledgePermissions}
               >
                 {systemKnowledgeCheck.checking ? <Loader2 className="h-3 w-3 animate-spin" /> : '授权/测试'}
               </Button>
               <Switch
-                checked={settings.systemKnowledgeEnabled}
+                checked={systemKnowledgeSupported && settings.systemKnowledgeEnabled}
+                disabled={!systemKnowledgeSupported}
                 onCheckedChange={async (v) => {
+                  if (!systemKnowledgeSupported) {
+                    await updateSetting('systemKnowledgeEnabled', false);
+                    setSystemKnowledgeCheck({ checking: false, message: 'Windows 暂不支持，系统知识库仅在 macOS 可用。', ok: false });
+                    return;
+                  }
                   await updateSetting('systemKnowledgeEnabled', v);
                   if (v) requestSystemKnowledgePermissions();
                   else setSystemKnowledgeCheck({ checking: false, message: '', ok: null });
                 }}
               />
             </div>
-            {systemKnowledgeCheck.message && (
+            {!systemKnowledgeSupported && (
+              <span className="max-w-[300px] text-right text-[11px] leading-4 text-red-600">
+                Windows 暂不支持，系统知识库仅在 macOS 可用。
+              </span>
+            )}
+            {systemKnowledgeSupported && systemKnowledgeCheck.message && (
               <span className={`max-w-[300px] text-right text-[11px] leading-4 ${systemKnowledgeCheck.ok ? 'text-green-600' : 'text-red-600'}`}>
                 {systemKnowledgeCheck.message}
               </span>

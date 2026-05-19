@@ -5,7 +5,14 @@ import {
   formatScheduleKnowledge,
   getRequestedScheduleSources,
   isSystemKnowledgePermissionError,
+  isSystemKnowledgeSupportedPlatform,
 } from './systemKnowledgeLogic.ts';
+
+test('system knowledge is disabled on Windows and available on macOS', () => {
+  assert.equal(isSystemKnowledgeSupportedPlatform('Win32', 'Windows'), false);
+  assert.equal(isSystemKnowledgeSupportedPlatform('MacIntel', 'Macintosh'), true);
+  assert.equal(isSystemKnowledgeSupportedPlatform('Linux x86_64', 'Linux'), false);
+});
 
 test('detects calendar, reminders, and default schedule sources from user text', () => {
   assert.deepEqual(getRequestedScheduleSources('今天有什么会议'), { calendar: true, reminders: false });

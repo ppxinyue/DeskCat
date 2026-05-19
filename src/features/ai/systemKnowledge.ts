@@ -5,11 +5,12 @@ import {
   createSchedulePermissionGate,
   formatScheduleKnowledge,
   getRequestedScheduleSources,
+  isSystemKnowledgeSupportedPlatform,
   SystemKnowledgePermissionError,
   type ScheduleKnowledge,
 } from './systemKnowledgeLogic';
 
-export { isSystemKnowledgePermissionError, SystemKnowledgePermissionError } from './systemKnowledgeLogic';
+export { isSystemKnowledgePermissionError, isSystemKnowledgeSupportedPlatform, SystemKnowledgePermissionError } from './systemKnowledgeLogic';
 
 interface DeviceKnowledge {
   appName?: string;
@@ -67,6 +68,8 @@ export function shouldQuerySystemKnowledge(
   enabled: boolean,
 ): boolean {
   if (!enabled) return false;
+  const runtimeNavigator = typeof navigator === 'undefined' ? null : navigator;
+  if (!isSystemKnowledgeSupportedPlatform(runtimeNavigator?.platform, runtimeNavigator?.userAgent)) return false;
   const queryText = getLatestUserQueryText(messages);
   return SYSTEM_KNOWLEDGE_TRIGGER.test(queryText);
 }
