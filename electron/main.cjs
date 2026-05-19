@@ -35,6 +35,7 @@ const {
   resolveSessionStatus,
 } = require('./codingStatus.cjs');
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
+const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
 const {
   hasSeenWelcomePermissionPrompt,
   markWelcomePermissionPromptSeen,
@@ -331,14 +332,7 @@ async function checkForAppUpdates({ manual = false } = {}) {
 }
 
 function compactChatWindowSnapshot(win) {
-  if (!win || win.isDestroyed()) return { exists: false };
-  return {
-    exists: true,
-    visible: win.isVisible(),
-    focused: win.isFocused(),
-    alwaysOnTop: win.isAlwaysOnTop(),
-    bounds: win.getBounds(),
-  };
+  return windowSnapshot(win);
 }
 
 function debugCompactChat(message, details = {}) {
@@ -1343,6 +1337,15 @@ async function checkDistraction({ settings }) {
 function isPetVisible() {
   const win = windows.get('pet');
   return Boolean(win && !win.isDestroyed() && win.isVisible());
+}
+
+function readPetWindowDebugInfo() {
+  return createPetWindowDebugInfo({
+    petWindow: windows.get('pet'),
+    compactWindow: windows.get('compact-chat'),
+    displays: screen.getAllDisplays(),
+    visibilityState: petVisibilityController.getState(),
+  });
 }
 
 function showPetWindow() {
@@ -4259,6 +4262,8 @@ const handlers = {
   focus_compact_chat_input: () => broadcast('compact-chat:focus-input', {}),
   show_pet_window: () => showPetWindow(),
   hide_pet_window: () => hidePetWindow(),
+  is_pet_window_visible: () => isPetVisible(),
+  read_pet_window_debug_info: () => readPetWindowDebugInfo(),
   read_pet_presence_context: readPetPresenceContext,
   quit_app: () => app.quit(),
   pin_pet_above_fullscreen_cmd: () => applyFloatingFullscreenBehavior(windows.get('pet'), { force: true }),
