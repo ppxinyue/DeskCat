@@ -54,9 +54,38 @@ try {
   $processName = ""
 }
 
+$url = ""
+$browserNames = @("chrome", "msedge", "firefox", "brave", "opera", "vivaldi")
+if ($browserNames -contains $processName.ToLowerInvariant()) {
+  try {
+    Add-Type -AssemblyName UIAutomationClient
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+    if ($null -ne $root) {
+      $editCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Edit
+      )
+      $edits = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $editCondition)
+      foreach ($edit in $edits) {
+        $valuePattern = $null
+        if ($edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$valuePattern)) {
+          $candidate = [string]$valuePattern.Current.Value
+          if ($candidate -match '^(https?://|[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,})(/|$)') {
+            $url = $candidate
+            break
+          }
+        }
+      }
+    }
+  } catch {
+    $url = ""
+  }
+}
+
 [pscustomobject]@{
   appName = $processName
   windowTitle = $titleBuilder.ToString()
+  url = $url
   processId = [int]$processId
   path = $processPath
 } | ConvertTo-Json -Compress
@@ -66,6 +95,14 @@ try {
 function normalizeWindowsAppName(value) {
   const name = String(value || '').trim();
   return name.replace(/\.exe$/i, '');
+}
+
+function normalizeCapturedBrowserUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#]|$)/i.test(url)) return `https://${url}`;
+  return '';
 }
 
 function parseWindowsActiveWindowJson(stdout) {
@@ -85,7 +122,7 @@ function parseWindowsActiveWindowJson(stdout) {
     supported: true,
     appName: normalizeWindowsAppName(parsed.appName),
     windowTitle: String(parsed.windowTitle || '').trim(),
-    url: '',
+    url: normalizeCapturedBrowserUrl(parsed.url),
     processId: Number(parsed.processId) || 0,
     path: String(parsed.path || '').trim(),
     error: null,
@@ -118,6 +155,7 @@ function readActiveWindowWindows({ execFileFn = execFile, timeout = 2500, log = 
 }
 
 module.exports = {
+  normalizeCapturedBrowserUrl,
   normalizeWindowsAppName,
   parseWindowsActiveWindowJson,
   readActiveWindowWindows,

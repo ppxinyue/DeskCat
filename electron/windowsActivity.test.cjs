@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  normalizeCapturedBrowserUrl,
   normalizeWindowsAppName,
   parseWindowsActiveWindowJson,
   readActiveWindowWindows,
@@ -13,10 +14,17 @@ test('normalizes Windows executable names without touching friendly names', () =
   assert.equal(normalizeWindowsAppName(' chrome.EXE '), 'chrome');
 });
 
+test('normalizes browser address bar values captured from Windows UI Automation', () => {
+  assert.equal(normalizeCapturedBrowserUrl('https://example.com/docs?q=deskcat'), 'https://example.com/docs?q=deskcat');
+  assert.equal(normalizeCapturedBrowserUrl('example.com/docs'), 'https://example.com/docs');
+  assert.equal(normalizeCapturedBrowserUrl('search words'), '');
+});
+
 test('parses Windows active window PowerShell JSON into timeline shape', () => {
   const parsed = parseWindowsActiveWindowJson(JSON.stringify({
     appName: 'Code.exe',
     windowTitle: 'DeskCat - Visual Studio Code',
+    url: '',
     processId: 1234,
     path: 'C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe',
   }));
@@ -30,6 +38,19 @@ test('parses Windows active window PowerShell JSON into timeline shape', () => {
     path: 'C:\\Users\\Lenovo\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe',
     error: null,
   });
+});
+
+test('parses captured browser URLs into Windows timeline snapshots', () => {
+  const parsed = parseWindowsActiveWindowJson(JSON.stringify({
+    appName: 'msedge.exe',
+    windowTitle: 'DeskCat issue - Microsoft Edge',
+    url: 'github.com/ppxinyue/DeskCat/issues',
+    processId: 5678,
+    path: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  }));
+
+  assert.equal(parsed.appName, 'msedge');
+  assert.equal(parsed.url, 'https://github.com/ppxinyue/DeskCat/issues');
 });
 
 test('invalid Windows active window output fails closed with a supported error', () => {
@@ -47,6 +68,9 @@ test('Windows active window script uses user32 foreground APIs and JSON output',
   assert.match(script, /GetForegroundWindow/);
   assert.match(script, /GetWindowText/);
   assert.match(script, /GetWindowThreadProcessId/);
+  assert.match(script, /UIAutomationClient/);
+  assert.match(script, /ValuePattern/);
+  assert.match(script, /"chrome", "msedge", "firefox"/);
   assert.match(script, /ConvertTo-Json -Compress/);
 });
 
@@ -58,6 +82,7 @@ test('readActiveWindowWindows invokes PowerShell without profiles', async () => 
       callback(null, JSON.stringify({
         appName: 'WindowsTerminal.exe',
         windowTitle: 'PowerShell',
+        url: '',
         processId: 42,
         path: 'C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal\\WindowsTerminal.exe',
       }), '');
