@@ -20,6 +20,12 @@ import {
   BUILTIN_STT_FALLBACK_MESSAGE,
   type VoiceInputPhase,
 } from '@/features/voice/voiceService';
+import {
+  canUseSystemSpeechOutput,
+  getSpeechRecognitionConstructor,
+  getSystemSpeechInputSupport,
+  resolveVoiceLanguage,
+} from '@/features/voice/voiceRuntime';
 import type { ApiConfig } from '@/features/ai/types';
 import {
   getMessages,
@@ -346,7 +352,7 @@ export function ChatDialog({
       voiceStopRef.current();
       return;
     }
-    const lang = settings.voiceInputLang === 'system' ? (navigator.language || 'zh-CN') : settings.voiceInputLang;
+    const lang = resolveVoiceLanguage(settings.voiceInputLang, navigator.language);
     startSpeechInput(
       (text) => setInput((value) => `${value}${value ? ' ' : ''}${text}`),
       (phase) => {
@@ -833,7 +839,7 @@ function StandaloneChatWorkspace({ initialConversationId }: { initialConversatio
                     activeStop();
                     return;
                   }
-                  const lang = settings.voiceInputLang === 'system' ? (navigator.language || 'zh-CN') : settings.voiceInputLang;
+                  const lang = resolveVoiceLanguage(settings.voiceInputLang, navigator.language);
                   startSpeechInput(
                     (text) => updatePanel(panel.id, (current) => ({ ...current, input: `${current.input}${current.input ? ' ' : ''}${text}` })),
                     (phase) => {
@@ -1060,6 +1066,23 @@ async function startSpeechInput(
     return;
   }
 
+  const runtimeWindow = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+    SpeechSynthesisUtterance?: typeof SpeechSynthesisUtterance;
+    speechSynthesis?: typeof window.speechSynthesis;
+  };
+  const speechSupport = getSystemSpeechInputSupport(runtimeWindow, navigator);
+  if (!speechSupport.supported) {
+    finish();
+    if (speechSupport.reason === 'microphone-unavailable') {
+      onText('Microphone access is not available. Please allow microphone permission and try again.');
+    } else {
+      window.alert('System speech recognition is not available in this runtime. Use cloud voice input or configure a personal STT API.');
+    }
+    return;
+  }
+
   let stopLevelMonitor: (() => void) | null = null;
   const canReadMicrophone = typeof navigator.mediaDevices?.getUserMedia === 'function';
   if (canReadMicrophone && onLevel) {
@@ -1090,11 +1113,7 @@ async function startSpeechInput(
     finish();
   };
 
-  const win = window as unknown as {
-    SpeechRecognition?: new () => SpeechRecognitionLike;
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-  };
-  const Recognition = win.SpeechRecognition ?? win.webkitSpeechRecognition;
+  const Recognition = getSpeechRecognitionConstructor(runtimeWindow) as (new () => SpeechRecognitionLike) | null;
   if (!Recognition) {
     stopRecording();
     window.alert('当前系统 WebView 没有暴露系统语音识别接口，无法直接启动语音输入。');
@@ -1429,7 +1448,7 @@ function stripMarkdown(text: string): string {
 }
 
 function speakText(text: string, rate: number = 1.0) {
-  if (!window.speechSynthesis) {
+  if (!canUseSystemSpeechOutput(window)) {
     console.warn('Speech synthesis not supported');
     return;
   }

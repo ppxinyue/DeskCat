@@ -3,6 +3,7 @@ import { BUILTIN_QUOTA_EXHAUSTED_MESSAGE } from '@/features/ai/defaultModel';
 import { resolveStoredApiKey } from '@/lib/apiKeyStorage';
 import { getCloudSyncStatus, getSetting, setSetting } from '@/lib/db';
 import type { AppSettings, VoiceProviderMode } from '@/features/settings/settingsStore';
+import { audioFileNameForMimeType, pickRecordingMimeTypeFromSupport } from './voiceRuntime';
 
 const BUILTIN_VOICE_BASE_URL = 'https://api.openai-proxy.org/v1';
 export const BUILTIN_TTS_MODEL = 'tts-1';
@@ -113,7 +114,7 @@ export async function transcribeWithCloudVoice(
         apiKey: config.apiKey,
       audioBase64,
       mimeType: blob.type || 'audio/webm',
-      fileName: audioFileName(blob.type),
+      fileName: audioFileNameForMimeType(blob.type),
       language: lang,
       durationMs,
       deviceId: config.usingBuiltin ? await getBuiltinDeviceId() : '',
@@ -294,15 +295,7 @@ function createAudioLevelMonitor(stream: MediaStream, onLevel?: (level: number) 
 }
 
 function pickRecordingMimeType() {
-  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'];
-  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) ?? '';
-}
-
-function audioFileName(mimeType: string) {
-  if (mimeType.includes('mp4')) return 'recording.m4a';
-  if (mimeType.includes('ogg')) return 'recording.ogg';
-  if (mimeType.includes('mpeg') || mimeType.includes('mp3')) return 'recording.mp3';
-  return 'recording.webm';
+  return pickRecordingMimeTypeFromSupport((type) => MediaRecorder.isTypeSupported(type));
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
