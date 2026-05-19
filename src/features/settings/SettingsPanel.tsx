@@ -1024,9 +1024,6 @@ function TimelineSection({
   const [backgroundDetail, setBackgroundDetail] = useState<BackgroundMarkerWithTime[] | null>(null);
   const [hoverCard, setHoverCard] = useState<TimelineHoverCard | null>(null);
   const [timelineScale, setTimelineScale] = useState(1);
-  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0);
-  const [timelineMaxScrollLeft, setTimelineMaxScrollLeft] = useState(0);
-  const isWindowsTimeline = isWindowsSettingsRuntime();
   const isMockPreview = entries.some((entry) => entry.id < 0);
   const timelineGapMs = Math.max(1, Math.min(20, minSegmentMinutes)) * 60_000;
   const timelineBlocks = getTimelineBlocks(entries, timelineGapMs);
@@ -1053,13 +1050,6 @@ function TimelineSection({
   const musicMarkers = backgroundProcessMarkers.filter((marker) => marker.type === 'music');
   const terminalMarkers = backgroundProcessMarkers.filter((marker) => marker.type === 'terminal');
   const timelineWidth = Math.round(960 * timelineScale);
-  const syncTimelineScrollState = useCallback(() => {
-    const node = scrollRef.current;
-    if (!node) return;
-    const maxScrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
-    setTimelineMaxScrollLeft(maxScrollLeft);
-    setTimelineScrollLeft(clampNumber(node.scrollLeft, 0, maxScrollLeft));
-  }, []);
 
   useLayoutEffect(() => {
     timelineScaleRef.current = timelineScale;
@@ -1070,24 +1060,7 @@ function TimelineSection({
       const maxScrollLeft = Math.max(0, node.scrollWidth - node.clientWidth);
       node.scrollLeft = clampNumber(pendingScrollLeft, 0, maxScrollLeft);
     }
-    syncTimelineScrollState();
-  }, [syncTimelineScrollState, timelineScale]);
-
-  useEffect(() => {
-    if (!isWindowsTimeline) return;
-    const node = scrollRef.current;
-    if (!node) return;
-    const handleScroll = () => syncTimelineScrollState();
-    const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncTimelineScrollState) : null;
-    node.addEventListener('scroll', handleScroll, { passive: true });
-    resizeObserver?.observe(node);
-    if (timelineContentRef.current) resizeObserver?.observe(timelineContentRef.current);
-    syncTimelineScrollState();
-    return () => {
-      node.removeEventListener('scroll', handleScroll);
-      resizeObserver?.disconnect();
-    };
-  }, [isWindowsTimeline, syncTimelineScrollState, timelineWidth, entries.length]);
+  }, [timelineScale]);
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -1254,27 +1227,6 @@ function TimelineSection({
           </div>
         </div>
       </div>
-
-      {isWindowsTimeline && timelineMaxScrollLeft > 2 && (
-        <div className="mt-2 flex items-center gap-2 rounded-[10px] bg-white/42 px-2.5 py-2 shadow-[0_8px_20px_rgba(52,64,84,0.052),0_1px_0_rgba(255,255,255,0.68)_inset] dark:bg-white/[0.045]">
-          <ChevronLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <input
-            type="range"
-            min={0}
-            max={Math.max(1, Math.round(timelineMaxScrollLeft))}
-            step={1}
-            value={Math.round(clampNumber(timelineScrollLeft, 0, timelineMaxScrollLeft))}
-            className="timeline-scroll-range"
-            aria-label="Timeline horizontal scroll"
-            onChange={(event) => {
-              const next = Number(event.currentTarget.value);
-              if (scrollRef.current) scrollRef.current.scrollLeft = next;
-              setTimelineScrollLeft(next);
-            }}
-          />
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        </div>
-      )}
 
       {selected && (
         <div className="mt-3 rounded-[14px] bg-white/50 p-3 shadow-[0_14px_34px_rgba(52,64,84,0.06),0_1px_0_rgba(255,255,255,0.72)_inset] dark:bg-white/[0.045]">

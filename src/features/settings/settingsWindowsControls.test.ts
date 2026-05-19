@@ -23,10 +23,10 @@ test('custom avatar state controls use Windows pointer-down switching and strong
   assert.match(settingsSource, /bg-\[#1f8fff\] text-white/);
 });
 
-test('Windows timeline has a larger range control for horizontal scrolling', () => {
-  assert.match(settingsSource, /isWindowsTimeline && timelineMaxScrollLeft > 2/);
-  assert.match(settingsSource, /className="timeline-scroll-range"/);
-  assert.match(cssSource, /\.timeline-scroll-range/);
+test('Windows timeline does not render a separate range scrollbar', () => {
+  assert.doesNotMatch(settingsSource, /timelineMaxScrollLeft/);
+  assert.doesNotMatch(settingsSource, /className="timeline-scroll-range"/);
+  assert.doesNotMatch(cssSource, /\.timeline-scroll-range/);
 });
 
 test('pet name input uses deferred commit to avoid interrupting IME composition', () => {
