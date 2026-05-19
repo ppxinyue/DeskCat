@@ -27,9 +27,9 @@ test('update checks are skipped only in development or unpackaged runtime', () =
   });
 });
 
-test('automatic update checks avoid OS notifications while manual checks may notify', () => {
+test('update checks use the same downloader path for automatic and manual checks', () => {
   assert.equal(updateCheckMethod({ manual: false }), 'checkForUpdates');
-  assert.equal(updateCheckMethod({ manual: true }), 'checkForUpdatesAndNotify');
+  assert.equal(updateCheckMethod({ manual: true }), 'checkForUpdates');
 });
 
 test('single instance lock quits duplicate app processes', () => {

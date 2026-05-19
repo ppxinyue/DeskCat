@@ -20,14 +20,15 @@ test('Windows bundled icon candidates prefer the multi-size ico before pet art',
   assert.equal(candidates.includes(path.join(appPath, 'public', 'assets', 'idle', 'png', 'idle.png')), true);
 });
 
-test('macOS/default bundled icon order preserves existing pet art preference', () => {
+test('macOS/default bundled icon order prefers the packaged high-resolution app icon', () => {
   const appPath = '/Applications/DeskCat.app';
   const candidates = bundledIconCandidates(appPath, {
     platform: 'darwin',
     fallbackIconPath: path.join(appPath, 'public', 'assets', 'idle', 'png', 'idle.png'),
   });
 
-  assert.equal(candidates[0], path.join(appPath, 'public', 'assets', 'idle', 'png', 'idle.png'));
+  assert.equal(candidates[0], path.join(appPath, 'src-tauri', 'icons', 'icon.icns'));
+  assert.equal(candidates.includes(path.join(appPath, 'public', 'assets', 'idle', 'png', 'idle.png')), true);
 });
 
 test('Windows native tray icon path uses ico files without bitmap resizing', () => {

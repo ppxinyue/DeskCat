@@ -325,16 +325,14 @@ function installDownloadedUpdate(source = 'unknown') {
     version: app.getVersion(),
   });
 
-  if (process.platform === 'win32') {
-    cleanupBeforeUpdateInstall();
-    setTimeout(() => {
-      writeAppDiagnosticLog('updater', 'force exit fallback after install request', { source });
-      app.exit(0);
-    }, 2500).unref?.();
-  }
+  cleanupBeforeUpdateInstall();
+  setTimeout(() => {
+    writeAppDiagnosticLog('updater', 'force exit fallback after install request', { source });
+    app.exit(0);
+  }, 7000).unref?.();
 
   try {
-    autoUpdater.quitAndInstall(process.platform === 'win32', true);
+    autoUpdater.quitAndInstall(false, true);
     return true;
   } catch (error) {
     updaterState.installRequested = false;
@@ -444,6 +442,9 @@ async function checkForAppUpdates({ manual = false } = {}) {
     return null;
   }
   setupAutoUpdater();
+  if (updaterState.downloaded) {
+    return updateStatusPayload({ status: 'downloaded' });
+  }
   if (updaterState.checking && !manual) return updateStatusPayload({ status: 'checking' });
   updaterState.lastCheckAt = Date.now();
   try {

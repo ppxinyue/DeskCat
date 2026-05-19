@@ -10,9 +10,12 @@ function bundledIconCandidates(appPath, { platform = process.platform, fallbackI
   ].filter(Boolean);
 
   const defaultCandidates = [
-    path.join(appPath, 'public', 'assets', 'idle', 'png', 'idle.png'),
-    path.join(appPath, 'src-tauri', 'icons', '32x32.png'),
+    path.join(appPath, 'src-tauri', 'icons', 'icon.icns'),
     path.join(appPath, 'src-tauri', 'icons', 'icon.png'),
+    path.join(appPath, 'src-tauri', 'icons', '128x128@2x.png'),
+    path.join(appPath, 'src-tauri', 'icons', '128x128.png'),
+    path.join(appPath, 'src-tauri', 'icons', '32x32.png'),
+    path.join(appPath, 'public', 'assets', 'idle', 'png', 'idle.png'),
     fallbackIconPath,
     path.join(appPath, 'dist', 'favicon.svg'),
     path.join(appPath, 'public', 'favicon.svg'),

@@ -5,6 +5,12 @@
 <h1 align="center">DeskCat</h1>
 
 <p align="center">
+  Product website:
+  <a href="https://www.ppdeskcat.site/">ppdeskcat.site</a> ·
+  <a href="https://desk-cat-product-web.vercel.app/">Vercel preview</a>
+</p>
+
+<p align="center">
   A personal AI desktop companion for calm work, smarter focus, coding sessions, and your day-in-review Timeline.
 </p>
 
@@ -49,9 +55,9 @@ DeskCat lives on your desktop as a pet or an orb. You can use the built-in cat a
 - Pet or orb display modes, opacity, size, motion, and always-on-top behavior.
 - Voice output, cloud TTS, and system speech fallback so your companion can actually talk.
 - Rest and water reminders shown directly around the companion, not hidden in a productivity dashboard.
-- macOS-friendly floating window behavior for desktop and fullscreen spaces.
+- macOS and Windows-friendly floating window behavior for desktop, fullscreen spaces, and topmost recovery.
 
-**How it works:** the companion is a transparent frameless Electron window rendered by React. Pet state is driven by local settings, focus/rest timers, chat/coding activity, and timeline sampling. Native macOS panel handling keeps the companion visible without behaving like a normal app window.
+**How it works:** the companion is a transparent frameless Electron window rendered by React. Pet state is driven by local settings, focus/rest timers, chat/coding activity, and timeline sampling. Native macOS panel handling and Windows topmost/fullscreen recovery keep the companion visible without behaving like a normal app window.
 
 ### AI Chat
 
@@ -76,13 +82,13 @@ Focus Guard is the part of DeskCat that notices when you said you wanted to work
 - Game/fullscreen detection to reduce interference when another app needs the screen.
 - Coding mode status for Codex and Claude Code, including working/done/needs-input states.
 
-**How it works:** the Electron main process samples foreground app/window state through macOS System Events and AppleScript, then the renderer compares normalized app/title/url data against focus rules. Coding mode reads Codex app-server events and Claude Code `stream-json` output, then maps them into compact companion states.
+**How it works:** the Electron main process samples foreground app/window state through macOS System Events and AppleScript on macOS, and through Windows foreground-window, User32, PowerShell, and UI Automation helpers on Windows. The renderer compares normalized app/title/url data against focus rules. Coding mode reads Codex app-server events and Claude Code `stream-json` output, then maps them into compact companion states.
 
 ### Smart Timeline
 
 Smart Timeline is DeskCat's memory of your workday. It shows where your attention went, which apps dominated your day, where distractions happened, and what was running in the background.
 
-- Foreground activity timeline with app names, window titles, browser domains, and categories.
+- Foreground activity timeline with app names, window titles, browser domains, and categories on macOS and Windows.
 - Short-switch folding so tiny accidental app hops do not destroy the main work block.
 - Idle pause handling so reading, thinking, or stepping away does not become fake activity.
 - Background markers for coding agents, music, terminal, and other tracked context.
@@ -97,11 +103,11 @@ DeskCat is local-first, with cloud services used only where they make sense.
 
 | Area | Implementation |
 | --- | --- |
-| Desktop shell | Electron 39, transparent frameless windows, native macOS panel behavior, Electron Builder packaging |
+| Desktop shell | Electron 39, transparent frameless windows, native macOS panel behavior, Windows topmost/fullscreen recovery, Electron Builder packaging |
 | UI | React 19, TypeScript, Vite 8, Tailwind CSS 4, Radix UI, lucide-react |
 | Local data | Browser localStorage-backed app store for settings, conversations, Timeline, focus stats, and telemetry queue |
 | Secure keys | Local/keychain-backed API key references; built-in service keys stay server-side |
-| Timeline sensing | macOS System Events, AppleScript, browser/window title sampling, idle/fullscreen/game guards |
+| Timeline sensing | macOS System Events and AppleScript; Windows foreground-window, User32, PowerShell, UI Automation, browser/window title sampling, idle/fullscreen/game guards |
 | AI chat | OpenAI-compatible chat/STT/TTS through Electron IPC; built-in calls routed through Supabase Edge Functions |
 | Cloud | Supabase Edge Functions, Postgres tables, migrations, optional cloud backup and analytics dashboard |
 | Coding mode | Codex app-server stdio protocol and Claude Code `stream-json` protocol |
@@ -113,14 +119,18 @@ DeskCat is local-first, with cloud services used only where they make sense.
 - Timeline and conversations are stored on the user's machine unless cloud sync is enabled.
 - Built-in AI proxy usage records do **not** store prompts, replies, images, audio, or API keys.
 - Supabase is used for cloud backup/analytics, public stats, and the built-in AI proxy.
-- macOS permissions are requested only for features that need them: Accessibility, Automation/System Events, Calendar, Reminders, Location, Microphone, and Screen Recording.
+- macOS permissions are requested only for features that need them: Accessibility, Automation/System Events, Calendar, Reminders, Location, Microphone, and Screen Recording. On Windows, Timeline and Focus Guard use foreground window/process metadata, and secure storage uses the platform key store where available.
 
 ## Install
 
-Download the latest macOS build from [GitHub Releases](https://github.com/ppxinyue/DeskCat/releases/latest).
+Download the latest build from [GitHub Releases](https://github.com/ppxinyue/DeskCat/releases/latest).
 
 - Apple Silicon: `DeskCat-*-arm64.dmg`
 - Intel Mac: `DeskCat-*-x64.dmg`
+- Windows x64: `DeskCat-*-x64.exe`
+- Windows 32-bit: `DeskCat-*-ia32.exe` when published
+
+Windows installers are currently unsigned, so Windows SmartScreen may show a warning until code signing is configured.
 
 ## Run From Source
 
@@ -137,6 +147,7 @@ Useful commands:
 pnpm electron:dev        # Vite + Electron development mode
 pnpm build               # TypeScript + Vite production build
 pnpm electron:build:mac  # macOS x64 + arm64 DMG build
+pnpm electron:build:win  # Windows x64 + ia32 NSIS build
 pnpm test                # Timeline, AI, chat, and startup tests
 pnpm lint                # ESLint
 ```
@@ -180,9 +191,9 @@ DeskCat 可以作为灵宠或悬浮球停在桌面上。你可以使用内置小
 - 支持灵宠 / Orb 模式、透明度、大小、动效和置顶行为。
 - 支持语音朗读、云端 TTS 和系统朗读兜底，让灵宠真的能说话。
 - 喝水提醒、休息提醒直接显示在灵宠附近。
-- 对 macOS 桌面、全屏 Space、悬浮窗层级做了专门适配。
+- 对 macOS 桌面/全屏 Space，以及 Windows 置顶、全屏和窗口恢复做了专门适配。
 
-**技术方案：** 灵宠是 React 渲染的 Electron 透明无边框窗口。状态来自本地设置、专注/休息计时器、聊天状态、Coding 状态和 Timeline 采样。macOS 下通过 native panel 行为控制全屏和置顶体验。
+**技术方案：** 灵宠是 React 渲染的 Electron 透明无边框窗口。状态来自本地设置、专注/休息计时器、聊天状态、Coding 状态和 Timeline 采样。macOS 下通过 native panel 行为控制全屏和置顶体验；Windows 下通过 topmost/fullscreen recovery 保持悬浮窗稳定可见。
 
 ### AI Chat 智能聊天
 
@@ -207,13 +218,13 @@ Focus Guard 负责在你进入专注状态后，提醒你有没有分心。
 - 检测游戏/全屏场景，减少灵宠窗口对游戏或全屏软件的干扰。
 - Coding mode 会展示 Codex / Claude Code 的 working、done、needs-input 等状态。
 
-**技术方案：** Electron 主进程通过 macOS System Events 和 AppleScript 采样前台窗口、应用、浏览器 URL、音乐和系统状态。前端把标准化后的 app/title/url 与专注规则匹配。Codex 通过 app-server stdio 协议接入，Claude Code 通过 CLI `stream-json` 输出接入。
+**技术方案：** Electron 主进程在 macOS 上通过 System Events 和 AppleScript 采样前台窗口、应用、浏览器 URL、音乐和系统状态；在 Windows 上通过前台窗口、User32、PowerShell 和 UI Automation helpers 采样 app/title/url。前端把标准化后的 app/title/url 与专注规则匹配。Codex 通过 app-server stdio 协议接入，Claude Code 通过 CLI `stream-json` 输出接入。
 
 ### Smart Timeline 智能时间线
 
 Timeline 是 DeskCat 对你一天工作状态的记忆。它会告诉你时间花在哪里，哪些 app 占据最多，什么时候分心，背景里还运行着什么。
 
-- 记录前台 app、窗口标题、浏览器域名和分类。
+- 在 macOS 和 Windows 上记录前台 app、窗口标题、浏览器域名和分类。
 - 折叠很短的切换，避免 1-2 秒误触破坏主时间块。
 - 处理 idle / 暂停状态，避免把离开电脑当成有效工作。
 - 记录 Coding、音乐、终端等背景 marker。
@@ -228,11 +239,11 @@ DeskCat 是 local-first 应用，云端只用于需要云端能力的地方。
 
 | 模块 | 技术方案 |
 | --- | --- |
-| 桌面壳 | Electron 39、透明无边框窗口、macOS native panel、Electron Builder |
+| 桌面壳 | Electron 39、透明无边框窗口、macOS native panel、Windows 置顶/全屏恢复、Electron Builder |
 | 前端 | React 19、TypeScript、Vite 8、Tailwind CSS 4、Radix UI、lucide-react |
 | 本地数据 | localStorage-backed store，保存设置、聊天、Timeline、专注统计和 telemetry 队列 |
 | 密钥安全 | 用户 API key 使用本地/keychain-backed 引用；内置服务 key 只在服务端 |
-| Timeline 感知 | macOS System Events、AppleScript、窗口标题/浏览器 URL 采样、idle/fullscreen/game 保护 |
+| Timeline 感知 | macOS System Events/AppleScript；Windows 前台窗口、User32、PowerShell、UI Automation；窗口标题/浏览器 URL 采样、idle/fullscreen/game 保护 |
 | AI 能力 | OpenAI-compatible chat/STT/TTS，经 Electron IPC 调用；内置服务经 Supabase Edge Function 代理 |
 | 云端 | Supabase Edge Functions、Postgres migrations、可选云备份、统计 dashboard |
 | Coding mode | Codex app-server stdio 协议、Claude Code `stream-json` 协议 |
@@ -244,7 +255,7 @@ DeskCat 是 local-first 应用，云端只用于需要云端能力的地方。
 - Timeline 和聊天记录不会自动上传，除非用户开启云同步。
 - 内置 AI 代理的用量记录不保存 prompt、回复正文、图片、音频或 API key。
 - Supabase 用于云备份/统计、公开下载统计和内置 AI 代理。
-- macOS 权限按功能触发：辅助功能、Automation/System Events、日历、提醒事项、位置、麦克风、屏幕录制。
+- macOS 权限按功能触发：辅助功能、Automation/System Events、日历、提醒事项、位置、麦克风、屏幕录制。Windows 上 Timeline 和 Focus Guard 使用前台窗口/进程元数据，安全存储优先使用系统密钥能力。
 
 ## 安装
 
@@ -252,6 +263,10 @@ DeskCat 是 local-first 应用，云端只用于需要云端能力的地方。
 
 - Apple Silicon：`DeskCat-*-arm64.dmg`
 - Intel Mac：`DeskCat-*-x64.dmg`
+- Windows x64：`DeskCat-*-x64.exe`
+- Windows 32-bit：发布时使用 `DeskCat-*-ia32.exe`
+
+Windows 安装包目前还未做代码签名，因此在配置签名前可能会触发 Windows SmartScreen 提醒。
 
 ## 本地运行
 
@@ -268,6 +283,7 @@ pnpm electron:dev
 pnpm electron:dev        # Vite + Electron 开发模式
 pnpm build               # TypeScript + Vite 生产构建
 pnpm electron:build:mac  # macOS x64 + arm64 DMG 构建
+pnpm electron:build:win  # Windows x64 + ia32 NSIS 构建
 pnpm test                # Timeline、AI、Chat、启动生命周期测试
 pnpm lint                # ESLint
 ```

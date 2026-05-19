@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { BarChart3, Bell, Bot, BriefcaseBusiness, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, Gamepad2, Globe2, Keyboard, Loader2, MessageSquareText, Monitor, Music2, Palette, PawPrint, Pencil, Plus, Settings2, ShieldAlert, Sparkles, Terminal, Trash2, UserRound } from 'lucide-react';
+import { BarChart3, Bell, Bot, BriefcaseBusiness, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Clock3, ExternalLink, Gamepad2, Globe2, Keyboard, Loader2, MessageSquareText, Monitor, Music2, Palette, PawPrint, Pencil, Plus, RefreshCw, Settings2, ShieldAlert, Sparkles, Terminal, Trash2, UserRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -51,6 +51,18 @@ const ALLOWED_STATIC_IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', '
 const ALLOWED_GIF_EXTENSIONS = new Set(['gif', 'webp']);
 const MASKED_API_KEY = '••••••••';
 const PROFILE_EXAMPLE_KEY = 'example';
+
+type AppUpdateStatus = {
+  status?: string;
+  checking?: boolean;
+  downloaded?: boolean;
+  lastError?: string;
+  lastCheckAt?: number;
+  percent?: number;
+  reason?: string;
+  updateVersion?: string;
+  version?: string;
+};
 
 function isWindowsSettingsRuntime(
   platform = typeof navigator === 'undefined' ? '' : navigator.platform,
@@ -3591,6 +3603,25 @@ function formatDurationSeconds(seconds: number) {
   return `${Math.round(minutes / 60)}h`;
 }
 
+function formatUpdateStatus(status: AppUpdateStatus) {
+  if (status.lastError) return `更新失败：${status.lastError}`;
+  if (status.status === 'skipped') return '当前运行环境不支持自动更新';
+  if (status.status === 'installing') return '正在退出并安装更新';
+  if (status.downloaded || status.status === 'downloaded') {
+    return status.updateVersion ? `v${status.updateVersion} 已下载，重启后安装` : '更新已下载，重启后安装';
+  }
+  if (status.status === 'downloading') {
+    return `正在下载更新${typeof status.percent === 'number' ? ` ${status.percent}%` : ''}`;
+  }
+  if (status.status === 'available') {
+    return status.updateVersion ? `发现新版本 v${status.updateVersion}，正在下载` : '发现新版本，正在下载';
+  }
+  if (status.checking || status.status === 'checking') return '正在检查更新';
+  if (status.status === 'not-available') return '已经是最新版本';
+  if (status.lastCheckAt) return '上次检查未发现可安装更新';
+  return '手动检查 GitHub Release 更新';
+}
+
 function GeneralSection({
   settings, updateSetting, view,
 }: {
@@ -3600,6 +3631,8 @@ function GeneralSection({
 }) {
   const [gameDraft, setGameDraft] = useState(settings.gameAppKeywords);
   const [musicDraft, setMusicDraft] = useState(settings.musicAppKeywords);
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>({ version: __APP_VERSION__ });
+  const [updateAction, setUpdateAction] = useState<'idle' | 'checking' | 'installing'>('idle');
 
   useEffect(() => {
     invoke<boolean>('get_launch_at_login')
@@ -3617,9 +3650,62 @@ function GeneralSection({
     setMusicDraft(settings.musicAppKeywords);
   }, [settings.musicAppKeywords]);
 
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    listen<AppUpdateStatus>('app:update-status', ({ payload }) => {
+      setUpdateStatus((current) => ({ ...current, ...payload }));
+      if (!payload.checking && payload.status !== 'downloading' && payload.status !== 'installing') {
+        setUpdateAction('idle');
+      }
+      if (payload.status === 'installing') setUpdateAction('installing');
+    }).then((unlisten) => {
+      dispose = unlisten;
+    }).catch(() => {});
+    return () => dispose?.();
+  }, []);
+
   const updateLaunchAtLogin = async (enabled: boolean) => {
     await updateSetting('launchAtLogin', enabled);
     invoke('set_launch_at_login', { enabled }).catch((error) => console.warn('Failed to update login item:', error));
+  };
+
+  const checkForUpdates = async () => {
+    setUpdateAction('checking');
+    setUpdateStatus((current) => ({ ...current, status: 'checking', checking: true, lastError: '' }));
+    try {
+      const result = await invoke<AppUpdateStatus>('check_for_updates');
+      setUpdateStatus((current) => ({ ...current, ...result }));
+      if (!result?.checking && result?.status !== 'downloading' && result?.status !== 'installing') {
+        setUpdateAction('idle');
+      }
+    } catch (error) {
+      setUpdateStatus((current) => ({
+        ...current,
+        status: 'error',
+        checking: false,
+        lastError: error instanceof Error ? error.message : String(error || '检查更新失败'),
+      }));
+      setUpdateAction('idle');
+    }
+  };
+
+  const installDownloadedUpdate = async () => {
+    setUpdateAction('installing');
+    setUpdateStatus((current) => ({ ...current, status: 'installing' }));
+    try {
+      const started = await invoke<boolean>('install_downloaded_update');
+      if (!started) {
+        setUpdateStatus((current) => ({ ...current, status: 'error', lastError: '更新包尚未下载完成，请先检查更新。' }));
+        setUpdateAction('idle');
+      }
+    } catch (error) {
+      setUpdateStatus((current) => ({
+        ...current,
+        status: 'error',
+        lastError: error instanceof Error ? error.message : String(error || '安装更新失败'),
+      }));
+      setUpdateAction('idle');
+    }
   };
 
   const updateGameKeywords = (value: string[]) => {
@@ -3655,6 +3741,31 @@ function GeneralSection({
               <span className="rounded-[8px] bg-white/60 px-2.5 py-1 text-[12px] font-semibold text-muted-foreground shadow-[0_1px_4px_rgba(15,23,42,0.05)] dark:bg-white/[0.055]">
                 v{__APP_VERSION__}
               </span>
+            </SettingRow>
+            <SettingRow label="软件更新" hint={formatUpdateStatus(updateStatus)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 rounded-[8px] px-2.5 text-[12px]"
+                onClick={checkForUpdates}
+                disabled={updateAction !== 'idle' || updateStatus.checking}
+              >
+                {updateAction === 'checking' || updateStatus.checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                检查更新
+              </Button>
+              {updateStatus.downloaded && (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-[8px] px-2.5 text-[12px]"
+                  onClick={installDownloadedUpdate}
+                  disabled={updateAction === 'installing'}
+                >
+                  {updateAction === 'installing' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  重启安装
+                </Button>
+              )}
             </SettingRow>
           </SettingsGroup>
         </>

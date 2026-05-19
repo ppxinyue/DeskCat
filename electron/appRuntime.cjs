@@ -8,7 +8,7 @@ function shouldSkipUpdateCheck({
 }
 
 function updateCheckMethod({ manual = false } = {}) {
-  return manual ? 'checkForUpdatesAndNotify' : 'checkForUpdates';
+  return 'checkForUpdates';
 }
 
 function configureSingleInstanceLock(app, { onSecondInstance } = {}) {
