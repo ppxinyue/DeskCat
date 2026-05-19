@@ -104,7 +104,7 @@ function metric(label, value, sub = '') {
 function renderMetrics(data) {
   const totals = data.totals || {};
   metricsEl.innerHTML = [
-    metric('Total Users', formatNumber(totals.devices), 'distinct devices'),
+    metric('Total Users', formatNumber(totals.devices), 'device x version'),
     metric('DAU', formatNumber(totals.dau), 'latest active day'),
     metric('Usage Time', formatDuration(totals.durationMs), `capped · ${data.range.days} days`),
     metric('Feature Uses', formatNumber(totals.useCount), 'summed event count'),

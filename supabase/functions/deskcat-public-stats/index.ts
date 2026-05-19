@@ -171,8 +171,9 @@ Deno.serve(async (req) => {
     const supabase = getSupabaseAdmin();
 
     if (req.method === 'GET') {
-      const [devices, downloads, pageViews, githubDownloads, githubStats] = await Promise.all([
+      const [devices, deviceVersions, downloads, pageViews, githubDownloads, githubStats] = await Promise.all([
         supabase.from('devices').select('device_id', { count: 'exact', head: true }),
+        supabase.from('device_version_installs').select('id', { count: 'exact', head: true }),
         supabase.from('download_events').select('id', { count: 'exact', head: true }).not('asset', 'ilike', 'debug-%'),
         supabase.from('page_view_events').select('id', { count: 'exact', head: true }),
         getGithubDownloads().catch(() => ({
@@ -195,6 +196,7 @@ Deno.serve(async (req) => {
         })),
       ]);
       if (devices.error) throw devices.error;
+      if (deviceVersions.error) throw deviceVersions.error;
       if (downloads.error) throw downloads.error;
       if (pageViews.error) throw pageViews.error;
 
@@ -205,7 +207,8 @@ Deno.serve(async (req) => {
       return json({
         ok: true,
         generatedAt: new Date().toISOString(),
-        totalUsers: devices.count ?? 0,
+        totalUsers: deviceVersions.count ?? devices.count ?? 0,
+        totalDevices: devices.count ?? 0,
         productSiteDownloads,
         githubDownloads: githubDownloadCount,
         githubDownloadBreakdown: githubDownloads,

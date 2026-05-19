@@ -1024,6 +1024,7 @@ Deno.serve(async (req) => {
 
     const [
       devices,
+      deviceVersions,
       backups,
       telemetry,
       daily,
@@ -1041,6 +1042,7 @@ Deno.serve(async (req) => {
       todayTimeline,
     ] = await Promise.all([
       supabase.from('devices').select('device_id,platform,app_version,first_seen_at,last_seen_at,metadata', { count: 'exact' }).order('last_seen_at', { ascending: false }),
+      supabase.from('device_version_installs').select('id', { count: 'exact', head: true }),
       supabase.from('cloud_backups').select('id', { count: 'exact', head: true }),
       supabase.from('telemetry_events').select('id', { count: 'exact', head: true }),
       supabase.from('daily_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: true }),
@@ -1070,6 +1072,7 @@ Deno.serve(async (req) => {
 
     for (const result of [
       devices,
+      deviceVersions,
       backups,
       telemetry,
       daily,
@@ -1121,6 +1124,7 @@ Deno.serve(async (req) => {
       viewsError: error instanceof Error ? error.message : String(error),
     }));
     const latestDaily = dailyRows.at(-1);
+    const versionUserCount = Number(deviceVersions.count ?? devices.count ?? 0);
     const productSiteViewsTotal = Number(pageViewsTotal.count ?? publicStats?.productSiteViews ?? 0);
     const githubViews = Number(githubStats.views || publicStats?.githubViews || 0);
     const githubStars = Number(githubStats.stars || publicStats?.githubStars || 0);
@@ -1131,7 +1135,8 @@ Deno.serve(async (req) => {
       generatedAt: new Date().toISOString(),
       range: { days, startDate },
       totals: {
-        devices: devices.count ?? 0,
+        devices: versionUserCount,
+        distinctDevices: devices.count ?? 0,
         backups: backups.count ?? 0,
         telemetryEvents: telemetry.count ?? 0,
         dau: Number(latestDaily?.dau ?? 0),

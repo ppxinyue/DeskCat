@@ -136,6 +136,28 @@ Deno.serve(async (req) => {
       }, { onConflict: 'device_id' });
     if (deviceError) throw deviceError;
 
+    let versionUserRecorded = false;
+    if (appVersion) {
+      const { error: versionError } = await supabase
+        .from('device_version_installs')
+        .upsert({
+          device_id: payload.deviceId,
+          app_version: appVersion,
+          ...(platform ? { platform } : {}),
+          last_seen_at: now,
+          metadata: {
+            source: 'deskcat',
+            sentAt: payload.sentAt ?? null,
+            userAgent,
+            ip,
+            geo,
+            headerDeviceId: req.headers.get('x-deskcat-device-id') || req.headers.get('x-desksprite-device-id'),
+          },
+        }, { onConflict: 'device_id,app_version' });
+      if (versionError) throw versionError;
+      versionUserRecorded = true;
+    }
+
     let backupInserted = false;
     if (payload.backup) {
       const { error: backupError } = await supabase
@@ -173,6 +195,7 @@ Deno.serve(async (req) => {
       ok: true,
       deviceId: payload.deviceId,
       backupInserted,
+      versionUserRecorded,
       telemetryReceived: telemetryEvents.length,
       receivedAt: now,
     });
