@@ -1127,8 +1127,9 @@ Deno.serve(async (req) => {
     const versionUserCount = Number(deviceVersions.count ?? devices.count ?? 0);
     const productSiteViewsTotal = Number(pageViewsTotal.count ?? publicStats?.productSiteViews ?? 0);
     const githubViews = Number(githubStats.views || publicStats?.githubViews || 0);
+    const githubUniqueViews = Number(githubStats.uniqueViews || 0);
     const githubStars = Number(githubStats.stars || publicStats?.githubStars || 0);
-    const visibleViewsTotal = productSiteViewsTotal + githubViews;
+    const visibleViewsTotal = productSiteViewsTotal + githubUniqueViews;
 
     return json({
       ok: true,

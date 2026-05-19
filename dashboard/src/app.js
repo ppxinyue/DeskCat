@@ -541,8 +541,6 @@ function renderReach(data) {
   const views = data.views || {};
   const productSite = views.productSite || {};
   const github = views.github || {};
-  reachSummaryEl.textContent = `${formatNumber(views.total)} total views`;
-
   const rows = [
     {
       label: 'Product website views',
@@ -560,6 +558,8 @@ function renderReach(data) {
       sub: 'repository stargazers',
     },
   ];
+  const visibleTotal = Number(productSite.total || 0) + Number(github.uniqueViews || 0);
+  reachSummaryEl.textContent = `${formatNumber(visibleTotal)} total views`;
 
   reachListEl.innerHTML = rows.map((row) => `
     <div class="download-row">
