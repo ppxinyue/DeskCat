@@ -36,3 +36,10 @@ test('pet name input uses deferred commit to avoid interrupting IME composition'
   assert.match(settingsSource, /if \(!composingRef\.current\) onChange\(nextValue\)/);
   assert.match(settingsSource, /value=\{settings\.petName\}[\s\S]*?deferCommit/);
 });
+
+test('general settings no longer render disabled destructive cleanup actions', () => {
+  assert.doesNotMatch(settingsSource, /<Button variant="destructive" size="sm" disabled>/);
+  assert.doesNotMatch(settingsSource, /清除所有对话历史/);
+  assert.doesNotMatch(settingsSource, /删除所有 API 配置/);
+  assert.doesNotMatch(settingsSource, /导出对话资料 \(JSON\)/);
+});

@@ -3705,11 +3705,6 @@ function GeneralSection({
               </span>
             </SettingRow>
           </SettingsGroup>
-          <div className="space-y-2 pt-1">
-            <Button variant="destructive" size="sm" disabled>清除所有对话历史</Button>
-            <Button variant="destructive" size="sm" disabled>删除所有 API 配置</Button>
-            <Button variant="outline" size="sm" disabled>导出对话资料 (JSON)</Button>
-          </div>
         </>
       )}
 
