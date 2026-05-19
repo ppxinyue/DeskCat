@@ -37,6 +37,7 @@ const {
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
 const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
 const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
+const { readLaunchAtLogin, setLaunchAtLogin, shouldApplyDefaultLaunchAtLogin } = require('./loginItems.cjs');
 const {
   hasSeenWelcomePermissionPrompt,
   markWelcomePermissionPromptSeen,
@@ -4397,11 +4398,8 @@ const handlers = {
   read_timeline_active_window: readTimelineActiveWindow,
   read_timeline_background_markers: readTimelineBackgroundOnly,
   read_system_activity_state: readSystemActivityState,
-  get_launch_at_login: () => app.getLoginItemSettings().openAtLogin,
-  set_launch_at_login: ({ enabled }) => {
-    app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: false });
-    return app.getLoginItemSettings().openAtLogin;
-  },
+  get_launch_at_login: () => readLaunchAtLogin(app),
+  set_launch_at_login: ({ enabled }) => setLaunchAtLogin(app, enabled),
   coding_get_state: () => publishCodingState(),
   coding_get_claude_state: () => publishClaudeCodingState(),
   coding_get_inherited_state: getInheritedCodingState,
@@ -4613,7 +4611,7 @@ function registerProtocols() {
 app.whenReady().then(() => {
   registerProtocols();
   secureKeyStore = createSecureKeyStore({ userDataPath: app.getPath('userData'), safeStorage });
-  app.setLoginItemSettings({ openAtLogin: true, openAsHidden: false });
+  if (shouldApplyDefaultLaunchAtLogin(process.platform)) setLaunchAtLogin(app, true);
   setAppIcon(resolveBundledAppIconPath());
   showPetWindow();
   ensureTopmostGuard();

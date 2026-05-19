@@ -18,7 +18,7 @@
     "test:timeline": "node --test src/lib/timelineRecorder.test.ts src/lib/timelineView.test.ts src/lib/db.timeline.test.ts src/lib/cloudSyncScheduler.test.ts",
     "test:ai": "node --test src/features/ai/systemKnowledgeLogic.test.ts",
     "test:chat": "node --test src/features/chat/sendShortcut.test.ts src/features/chat/dropImageHandoff.test.ts src/features/chat/dragImageFiles.test.ts src/features/pet/contextMenuAction.test.ts src/features/pet/animations.test.ts src/lib/apiKeyStorage.test.ts",
-    "test:startup": "node --test src/lib/startupTheme.test.ts src/lib/platformSupport.test.ts electron/windowLifecycle.test.cjs electron/windowDiagnostics.test.cjs electron/buildConfig.test.cjs electron/globalShortcuts.test.cjs electron/codingStatus.test.cjs electron/welcomePermissionPrompt.test.cjs electron/secureKeyStore.test.cjs electron/windowsActivity.test.cjs electron/windowsProcesses.test.cjs scripts/start-electron-dev.test.cjs",
+    "test:startup": "node --test src/lib/startupTheme.test.ts src/lib/platformSupport.test.ts electron/windowLifecycle.test.cjs electron/windowDiagnostics.test.cjs electron/buildConfig.test.cjs electron/globalShortcuts.test.cjs electron/loginItems.test.cjs electron/codingStatus.test.cjs electron/welcomePermissionPrompt.test.cjs electron/secureKeyStore.test.cjs electron/windowsActivity.test.cjs electron/windowsProcesses.test.cjs scripts/start-electron-dev.test.cjs",
     "test": "pnpm test:timeline && pnpm test:ai && pnpm test:chat && pnpm test:startup",
     "preview": "vite preview"
   },
