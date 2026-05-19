@@ -4365,13 +4365,15 @@ const handlers = {
     petContextMenuOpen = Boolean(open);
     const pet = windows.get('pet');
     if (pet && !pet.isDestroyed()) {
-      applyFloatingFullscreenBehavior(pet, { force: true });
-      if (petContextMenuOpen) pet.moveTop();
+      if (process.platform !== 'win32') {
+        applyFloatingFullscreenBehavior(pet, { force: true });
+        if (petContextMenuOpen) pet.moveTop();
+      }
     }
     if (!petContextMenuOpen) {
       const compact = windows.get('compact-chat');
       if (compact && !compact.isDestroyed() && compact.isVisible()) {
-        applyFloatingFullscreenBehavior(compact, { force: true });
+        if (process.platform !== 'win32') applyFloatingFullscreenBehavior(compact, { force: true });
       }
     }
     debugCompactChat(petContextMenuOpen ? 'pet context menu raised' : 'pet context menu closed', {

@@ -2627,8 +2627,7 @@ function PetWindow() {
     setContextMenuLayout(nextLayout);
     invoke("set_pet_context_menu_open", { open: next }).catch(() => {});
     if (next) {
-      requestLayout({ contextMenuOpen: true, contextMenuLayout: nextLayout }).catch(() => {});
-      return;
+      return requestLayout({ contextMenuOpen: true, contextMenuLayout: nextLayout });
     }
     contextMenuRestoreTimerRef.current = window.setTimeout(() => {
       contextMenuRestoreTimerRef.current = null;

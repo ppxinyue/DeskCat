@@ -43,6 +43,10 @@ const SUBMENU_WIDTH = 190;
 const MENU_MARGIN = 8;
 const MENU_LEFT_SIDE_THRESHOLD = 0.62;
 
+function isWindowsRuntime(platform = navigator.platform, userAgent = navigator.userAgent): boolean {
+  return /win/i.test(`${platform || ''} ${userAgent || ''}`);
+}
+
 function pickNextMotion(motions: PetMotionSettings, current: PetMotionName | null): PetMotionName | null {
   const enabled = MOTION_NAMES.filter((name) => motions[name]?.enabled);
   if (enabled.length === 0) return null;
@@ -83,7 +87,7 @@ export function PetAvatar({
   onDragStart?: (point: { screenX: number; screenY: number }) => void;
   onDragMove?: (point: { screenX: number; screenY: number }) => void;
   onDragEnd?: () => void;
-  onMenuOpenChange?: (open: boolean, side?: 'left' | 'right') => void;
+  onMenuOpenChange?: (open: boolean, side?: 'left' | 'right') => void | Promise<void>;
   onFocusToggle?: () => void;
   codingModeEnabled?: boolean;
   codingProvider?: CodingProvider;
@@ -336,7 +340,11 @@ export function PetAvatar({
 
   const handleContextMenuOpen = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     didDrag.current = true;
+    setMenuOpen(false);
+    setActiveSubmenu(null);
+    setLockedSubmenu(null);
     const clientX = e.clientX;
     const clientY = e.clientY;
     const windowWidth = window.innerWidth;
@@ -344,8 +352,8 @@ export function PetAvatar({
     const shouldOpenLeft = petRect
       ? petRect.right + MENU_WIDTH + SUBMENU_WIDTH + MENU_MARGIN * 2 > windowWidth || petRect.left > windowWidth * MENU_LEFT_SIDE_THRESHOLD
       : clientX + MENU_WIDTH + SUBMENU_WIDTH + MENU_MARGIN * 2 > windowWidth || clientX > windowWidth * MENU_LEFT_SIDE_THRESHOLD;
-    onMenuOpenChange?.(true, shouldOpenLeft ? 'left' : 'right');
-    window.setTimeout(() => {
+    const layoutReady = Promise.resolve(onMenuOpenChange?.(true, shouldOpenLeft ? 'left' : 'right'));
+    const openMenu = () => {
       const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
       const petRect = petRootRef.current?.getBoundingClientRect();
@@ -369,7 +377,15 @@ export function PetAvatar({
       setActiveSubmenu(null);
       setLockedSubmenu(null);
       setMenuOpen(true);
-    }, 40);
+    };
+    if (isWindowsRuntime()) {
+      layoutReady
+        .then(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))))
+        .then(openMenu)
+        .catch(openMenu);
+    } else {
+      window.setTimeout(openMenu, 40);
+    }
     getConversations()
       .then((convos) => setRecentConversations(
         convos
