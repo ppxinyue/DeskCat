@@ -20,6 +20,7 @@ type DailyFeatureUserMetric = {
 type DailyDeviceUsageMetric = {
   metric_date: string;
   device_id: string;
+  app_version?: string | null;
   event_count: number;
   use_count: number;
   duration_ms: number;
@@ -31,6 +32,7 @@ type DailyDeviceUsageMetric = {
 type DailyDeviceFeatureMetric = {
   metric_date: string;
   device_id: string;
+  app_version?: string | null;
   feature: string;
   event_name: string;
   event_count: number;
@@ -47,6 +49,8 @@ type DeviceMetric = {
   last_seen_at: string;
   metadata: Record<string, unknown> | null;
 };
+
+type DeviceVersionMetric = DeviceMetric;
 
 type DeviceBackupMetric = {
   device_id: string;
@@ -83,9 +87,12 @@ type UserDailyBuilder = {
 };
 
 type UserBuilder = {
+  userKey: string;
   deviceId: string;
   platform: string | null;
   appVersion: string | null;
+  ip: string | null;
+  location: string | null;
   firstSeenAt: string | null;
   lastSeenAt: string | null;
   metadata: Record<string, unknown> | null;
@@ -312,7 +319,25 @@ function buildDailyTrends(
   }));
 }
 
-function aggregateDeviceFeatures(rows: DailyDeviceFeatureMetric[]) {
+function versionUserKey(deviceId: string, appVersion: string | null | undefined) {
+  return `${deviceId}::${appVersion || 'unknown-version'}`;
+}
+
+function metricVersion(row: { device_id: string; app_version?: string | null }, versionByDevice: Map<string, string>) {
+  return row.app_version || versionByDevice.get(row.device_id) || 'unknown-version';
+}
+
+function buildCurrentVersionByDevice(devices: DeviceMetric[]) {
+  const versions = new Map<string, string>();
+  for (const device of devices) {
+    if (!versions.has(device.device_id)) {
+      versions.set(device.device_id, device.app_version || appVersionFromMetadata(device.metadata) || 'unknown-version');
+    }
+  }
+  return versions;
+}
+
+function aggregateDeviceFeatures(rows: DailyDeviceFeatureMetric[], versionByDevice = new Map<string, string>()) {
   const byFeature = new Map<string, {
     feature: string;
     eventCount: number;
@@ -336,8 +361,6 @@ function aggregateDeviceFeatures(rows: DailyDeviceFeatureMetric[]) {
     const rawDurationMs = Number(row.raw_duration_ms ?? row.duration_ms ?? 0);
     const useCount = Number(row.use_count ?? 0);
     const eventCount = Number(row.event_count ?? 0);
-    const deviceKey = `${row.metric_date}:${row.device_id}`;
-
     const feature = byFeature.get(row.feature) ?? {
       feature: row.feature,
       eventCount: 0,
@@ -350,7 +373,7 @@ function aggregateDeviceFeatures(rows: DailyDeviceFeatureMetric[]) {
     feature.useCount += useCount;
     feature.durationMs += durationMs;
     feature.rawDurationMs += rawDurationMs;
-    feature.activeDevices.add(deviceKey);
+    feature.activeDevices.add(versionUserKey(row.device_id, metricVersion(row, versionByDevice)));
     byFeature.set(row.feature, feature);
 
     const eventKey = `${row.feature}:${row.event_name}`;
@@ -367,7 +390,7 @@ function aggregateDeviceFeatures(rows: DailyDeviceFeatureMetric[]) {
     event.useCount += useCount;
     event.durationMs += durationMs;
     event.rawDurationMs += rawDurationMs;
-    event.activeDevices.add(deviceKey);
+    event.activeDevices.add(versionUserKey(row.device_id, metricVersion(row, versionByDevice)));
     byEvent.set(eventKey, event);
   }
 
@@ -409,11 +432,51 @@ function aggregateFeatureUsers(rows: DailyFeatureUserMetric[]) {
     .sort((a, b) => String(b.metricDate).localeCompare(String(a.metricDate)) || b.activeDevices - a.activeDevices);
 }
 
+function aggregateFeatureVersionUsers(rows: DailyDeviceFeatureMetric[], versionByDevice: Map<string, string>) {
+  const byDateFeature = new Map<string, {
+    metricDate: string;
+    feature: string;
+    activeUsers: Set<string>;
+    useCount: number;
+    eventCount: number;
+    durationMs: number;
+  }>();
+
+  for (const row of rows) {
+    const key = `${row.metric_date}:${row.feature}`;
+    const current = byDateFeature.get(key) ?? {
+      metricDate: row.metric_date,
+      feature: row.feature,
+      activeUsers: new Set<string>(),
+      useCount: 0,
+      eventCount: 0,
+      durationMs: 0,
+    };
+    current.activeUsers.add(versionUserKey(row.device_id, metricVersion(row, versionByDevice)));
+    current.useCount += Number(row.use_count ?? 0);
+    current.eventCount += Number(row.event_count ?? 0);
+    current.durationMs += Number(row.duration_ms ?? 0);
+    byDateFeature.set(key, current);
+  }
+
+  return Array.from(byDateFeature.values())
+    .map((row) => ({
+      metricDate: row.metricDate,
+      feature: row.feature,
+      activeDevices: row.activeUsers.size,
+      useCount: row.useCount,
+      eventCount: row.eventCount,
+      durationMs: row.durationMs,
+    }))
+    .sort((a, b) => String(b.metricDate).localeCompare(String(a.metricDate)) || b.activeDevices - a.activeDevices);
+}
+
 function aggregateDeviceUsage(rows: DailyDeviceUsageMetric[]) {
   return rows
     .map((row) => ({
       metricDate: row.metric_date,
       deviceId: row.device_id,
+      appVersion: row.app_version ?? null,
       durationMs: Number(row.duration_ms ?? 0),
       useCount: Number(row.use_count ?? 0),
       eventCount: Number(row.event_count ?? 0),
@@ -428,7 +491,7 @@ function aggregateDeviceUsage(rows: DailyDeviceUsageMetric[]) {
     );
 }
 
-function aggregateDailyUsageByDay(rows: DailyDeviceUsageMetric[]) {
+function aggregateDailyUsageByDay(rows: DailyDeviceUsageMetric[], versionByDevice = new Map<string, string>()) {
   const byDate = new Map<string, {
     metricDate: string;
     users: Set<string>;
@@ -447,7 +510,7 @@ function aggregateDailyUsageByDay(rows: DailyDeviceUsageMetric[]) {
       useCount: 0,
       eventCount: 0,
     };
-    current.users.add(row.device_id);
+    current.users.add(versionUserKey(row.device_id, metricVersion(row, versionByDevice)));
     current.durationMs += Number(row.duration_ms ?? 0);
     current.rawDurationMs += Number(row.raw_duration_ms ?? row.duration_ms ?? 0);
     current.useCount += Number(row.use_count ?? 0);
@@ -469,6 +532,14 @@ function aggregateDailyUsageByDay(rows: DailyDeviceUsageMetric[]) {
       };
     })
     .sort((a, b) => String(b.metricDate).localeCompare(String(a.metricDate)));
+}
+
+function applyVersionDauToDailyRows(dailyRows: DailyMetric[], dailyUsageByDay: Array<{ metricDate: string; users: number }>) {
+  const usersByDate = new Map(dailyUsageByDay.map((row) => [row.metricDate, row.users]));
+  return dailyRows.map((row) => ({
+    ...row,
+    dau: usersByDate.get(row.metric_date) ?? Number(row.dau ?? 0),
+  }));
 }
 
 function readObject(value: unknown) {
@@ -502,6 +573,10 @@ function formatMetadataLocation(metadata: Record<string, unknown> | null) {
     readString(geo.country),
   ].filter(Boolean).join(', ');
   return location || readString(geo.timezone) || readString(deviceInfo.timezone);
+}
+
+function ipFromMetadata(metadata: Record<string, unknown> | null) {
+  return readString(readObject(metadata).ip);
 }
 
 function countryFromTimezone(timezone: string | null) {
@@ -556,7 +631,7 @@ function buildUserLocations(devices: DeviceMetric[]) {
       users: new Set<string>(),
       ips: new Set<string>(),
     };
-    current.users.add(device.device_id);
+    current.users.add(versionUserKey(device.device_id, device.app_version || appVersionFromMetadata(device.metadata)));
     if (ip) current.ips.add(ip);
     byKey.set(key, current);
   }
@@ -584,8 +659,12 @@ function buildActiveUsersToday(devices: DeviceMetric[], timelineRows: RecentEven
     timelineByDevice.set(row.device_id, rows);
   }
 
+  const currentVersionByDevice = buildCurrentVersionByDevice(devices);
   const users = devices
-    .filter((device) => timelineByDevice.has(device.device_id))
+    .filter((device) =>
+      timelineByDevice.has(device.device_id) &&
+      (device.app_version || appVersionFromMetadata(device.metadata) || 'unknown-version') === currentVersionByDevice.get(device.device_id)
+    )
     .map((device) => {
       const metadata = device.metadata ?? null;
       const root = readObject(metadata);
@@ -632,6 +711,7 @@ function buildActiveUsersToday(devices: DeviceMetric[], timelineRows: RecentEven
       const durationMs = activityEntries.reduce((total, row) => total + Number(row.durationMs ?? 0), 0);
       const useCount = deviceTimelineRows.reduce((total, row) => total + Number(row.count ?? 0), 0);
       return {
+        userKey: versionUserKey(device.device_id, device.app_version || appVersionFromMetadata(metadata)),
         deviceId: device.device_id,
         firstSeenAt: device.first_seen_at,
         lastSeenAt: device.last_seen_at,
@@ -670,21 +750,27 @@ function buildActiveUsersToday(devices: DeviceMetric[], timelineRows: RecentEven
 }
 
 function buildUsers(
-  devices: DeviceMetric[],
+  deviceVersions: DeviceVersionMetric[],
   usageRows: DailyDeviceUsageMetric[],
   featureRows: DailyDeviceFeatureMetric[],
   backupRows: DeviceBackupMetric[],
   recentRows: RecentEvent[],
+  today: TodayBounds,
 ) {
   const byDevice = new Map<string, UserBuilder>();
+  const currentVersionByDevice = buildCurrentVersionByDevice(deviceVersions);
 
-  function ensure(deviceId: string) {
-    const existing = byDevice.get(deviceId);
+  function ensure(deviceId: string, appVersion: string | null | undefined = currentVersionByDevice.get(deviceId)) {
+    const userKey = versionUserKey(deviceId, appVersion);
+    const existing = byDevice.get(userKey);
     if (existing) return existing;
     const user: UserBuilder = {
+      userKey,
       deviceId,
       platform: null,
-      appVersion: null,
+      appVersion: appVersion || null,
+      ip: null,
+      location: null,
       firstSeenAt: null,
       lastSeenAt: null,
       metadata: null,
@@ -705,21 +791,24 @@ function buildUsers(
       features: new Map(),
       recentEvents: [],
     };
-    byDevice.set(deviceId, user);
+    byDevice.set(userKey, user);
     return user;
   }
 
-  for (const device of devices) {
-    const user = ensure(device.device_id);
+  for (const device of deviceVersions) {
+    const appVersion = device.app_version || appVersionFromMetadata(device.metadata);
+    const user = ensure(device.device_id, appVersion);
     user.platform = device.platform;
-    user.appVersion = device.app_version || appVersionFromMetadata(device.metadata);
+    user.appVersion = appVersion;
+    user.ip = ipFromMetadata(device.metadata);
+    user.location = formatMetadataLocation(device.metadata);
     user.firstSeenAt = device.first_seen_at;
     user.lastSeenAt = device.last_seen_at;
     user.metadata = device.metadata ?? null;
   }
 
   for (const row of usageRows) {
-    const user = ensure(row.device_id);
+    const user = ensure(row.device_id, row.app_version || currentVersionByDevice.get(row.device_id));
     const durationMs = Number(row.duration_ms ?? 0);
     const rawDurationMs = Number(row.raw_duration_ms ?? row.duration_ms ?? 0);
     const useCount = Number(row.use_count ?? 0);
@@ -740,7 +829,7 @@ function buildUsers(
   }
 
   for (const row of featureRows) {
-    const user = ensure(row.device_id);
+    const user = ensure(row.device_id, row.app_version || currentVersionByDevice.get(row.device_id));
     const feature = user.features.get(row.feature) ?? {
       feature: row.feature,
       durationMs: 0,
@@ -804,15 +893,19 @@ function buildUsers(
         }))
         .sort((a, b) => b.durationMs - a.durationMs || b.useCount - a.useCount);
       return {
+        userKey: user.userKey,
         deviceId: user.deviceId,
         platform: user.platform,
         appVersion: user.appVersion,
+        ip: user.ip,
+        location: user.location,
         firstSeenAt: user.firstSeenAt,
         lastSeenAt: user.lastSeenAt,
         metadata: user.metadata,
         totals: {
           ...user.totals,
           activeDays: daily.length,
+          todayDurationMs: daily.find((row) => row.metricDate === today.date)?.durationMs ?? 0,
         },
         backup: user.backup,
         daily,
@@ -1042,7 +1135,7 @@ Deno.serve(async (req) => {
       todayTimeline,
     ] = await Promise.all([
       supabase.from('devices').select('device_id,platform,app_version,first_seen_at,last_seen_at,metadata', { count: 'exact' }).order('last_seen_at', { ascending: false }),
-      supabase.from('device_version_installs').select('id', { count: 'exact', head: true }),
+      supabase.from('device_version_installs').select('device_id,app_version,platform,first_seen_at,last_seen_at,metadata', { count: 'exact' }).order('last_seen_at', { ascending: false }),
       supabase.from('cloud_backups').select('id', { count: 'exact', head: true }),
       supabase.from('telemetry_events').select('id', { count: 'exact', head: true }),
       supabase.from('daily_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: true }),
@@ -1091,15 +1184,17 @@ Deno.serve(async (req) => {
       if (result.error) throw result.error;
     }
 
-    const dailyRows = fillDailyRows((daily.data ?? []) as DailyMetric[], startDate, days);
     const deviceRows = (devices.data ?? []) as DeviceMetric[];
-    const featureUserRows = (featureUsersDaily.data ?? []) as DailyFeatureUserMetric[];
+    const deviceVersionRows = (deviceVersions.data ?? []) as DeviceVersionMetric[];
+    const versionByDevice = buildCurrentVersionByDevice(deviceVersionRows.length ? deviceVersionRows : deviceRows);
     const deviceUsageRows = (deviceUsageDaily.data ?? []) as DailyDeviceUsageMetric[];
     const deviceFeatureRows = (deviceFeatureDaily.data ?? []) as DailyDeviceFeatureMetric[];
     const deviceBackupRows = (deviceBackups.data ?? []) as DeviceBackupMetric[];
     const downloadRows = (downloads.data ?? []) as DailyDownloadMetric[];
     const pageViewRows = (pageViews.data ?? []) as DailyPageViewMetric[];
-    const aggregates = aggregateDeviceFeatures(deviceFeatureRows);
+    const dailyUsageByDay = aggregateDailyUsageByDay(deviceUsageRows, versionByDevice);
+    const dailyRows = applyVersionDauToDailyRows(fillDailyRows((daily.data ?? []) as DailyMetric[], startDate, days), dailyUsageByDay);
+    const aggregates = aggregateDeviceFeatures(deviceFeatureRows, versionByDevice);
     const productDownloads = aggregateProductDownloads(downloadRows);
     const productViews = aggregateProductViews(pageViewRows);
     const githubDownloads = await getGithubDownloads().catch((error) => ({
@@ -1124,7 +1219,6 @@ Deno.serve(async (req) => {
       viewsError: error instanceof Error ? error.message : String(error),
     }));
     const latestDaily = dailyRows.at(-1);
-    const versionUserCount = Number(deviceVersions.count ?? devices.count ?? 0);
     const productSiteViewsTotal = Number(pageViewsTotal.count ?? publicStats?.productSiteViews ?? 0);
     const githubViews = Number(githubStats.views || publicStats?.githubViews || 0);
     const githubUniqueViews = Number(githubStats.uniqueViews || 0);
@@ -1136,8 +1230,10 @@ Deno.serve(async (req) => {
       generatedAt: new Date().toISOString(),
       range: { days, startDate },
       totals: {
-        devices: versionUserCount,
+        devices: deviceVersions.count ?? devices.count ?? 0,
         distinctDevices: devices.count ?? 0,
+        versionInstalls: deviceVersions.count ?? 0,
+        userDefinition: 'device_version',
         backups: backups.count ?? 0,
         telemetryEvents: telemetry.count ?? 0,
         dau: Number(latestDaily?.dau ?? 0),
@@ -1151,21 +1247,22 @@ Deno.serve(async (req) => {
       daily: dailyRows,
       dailyTrends: buildDailyTrends(dailyRows, downloadRows, pageViewRows, githubStats, githubDownloads),
       featureUsage: aggregates.features,
-      featureDailyUsers: aggregateFeatureUsers(featureUserRows).slice(0, 80),
+      featureDailyUsers: aggregateFeatureVersionUsers(deviceFeatureRows, versionByDevice).slice(0, 80),
       dailyUserUsage: aggregateDeviceUsage(deviceUsageRows).slice(0, 200),
-      dailyUserUsageByDay: aggregateDailyUsageByDay(deviceUsageRows),
+      dailyUserUsageByDay: dailyUsageByDay,
       newUsersToday: buildActiveUsersToday(
-        deviceRows,
+        deviceVersionRows.length ? deviceVersionRows : deviceRows,
         (todayTimeline.data ?? []) as RecentEvent[],
         today,
       ),
-      userLocations: buildUserLocations(deviceRows),
+      userLocations: buildUserLocations(deviceVersionRows.length ? deviceVersionRows : deviceRows),
       users: buildUsers(
-        deviceRows,
+        deviceVersionRows.length ? deviceVersionRows : deviceRows,
         deviceUsageRows,
         deviceFeatureRows,
         deviceBackupRows,
         (recent.data ?? []) as RecentEvent[],
+        today,
       ),
       eventUsage: aggregates.events.slice(0, 40),
       downloads: {

@@ -105,7 +105,7 @@ function metric(label, value, sub = '') {
 function renderMetrics(data) {
   const totals = data.totals || {};
   metricsEl.innerHTML = [
-    metric('Total Users', formatNumber(totals.devices), 'device x version'),
+    metric('Total Users', formatNumber(totals.devices), 'device-version pairs'),
     metric('DAU', formatNumber(totals.dau), 'latest active day'),
     metric('Usage Time', formatDuration(totals.durationMs), `capped · ${data.range.days} days`),
     metric('Feature Uses', formatNumber(totals.useCount), 'summed event count'),
@@ -310,11 +310,23 @@ function formatUserMeta(user) {
   const parts = [
     user.platform,
     user.appVersion,
-    formatLocation(metadata),
-    metadata.ip,
+    user.location || formatLocation(metadata),
+    user.ip || metadata.ip,
     deviceInfo.language,
   ].filter(Boolean);
   return parts.length ? parts.map(escapeHtml).join(' · ') : 'No client metadata yet';
+}
+
+function userSystem(user) {
+  return user.platform || user.metadata?.deviceInfo?.platform || '—';
+}
+
+function userVersion(user) {
+  return user.appVersion || '—';
+}
+
+function userIp(user) {
+  return user.ip || user.metadata?.ip || '—';
 }
 
 function projectMapPoint(lat, lon) {
@@ -468,30 +480,51 @@ function renderUserDetail(user) {
 
 function renderUsers(data) {
   const users = data.users || [];
-  usersSummaryEl.textContent = `${formatNumber(users.length)} users`;
+  usersSummaryEl.textContent = `${formatNumber(users.length)} users · user = device-version`;
   if (users.length === 0) {
     userListEl.innerHTML = '<div class="empty">No users yet.</div>';
     renderUserDetail(null);
     return;
   }
 
-  if (!selectedUserId || !users.some((user) => user.deviceId === selectedUserId)) {
-    selectedUserId = users[0].deviceId;
+  if (!selectedUserId || !users.some((user) => (user.userKey || user.deviceId) === selectedUserId)) {
+    selectedUserId = users[0].userKey || users[0].deviceId;
   }
   localStorage.setItem(storage.selectedUser, selectedUserId);
-  const selected = users.find((user) => user.deviceId === selectedUserId);
+  const selected = users.find((user) => (user.userKey || user.deviceId) === selectedUserId);
 
-  userListEl.innerHTML = users.map((user) => `
-    <button class="user-row ${user.deviceId === selectedUserId ? 'is-active' : ''}" type="button" data-user-id="${user.deviceId}">
-      <span title="${user.deviceId}">${shortDeviceId(user.deviceId)}</span>
-      <strong>${formatDuration(user.totals?.durationMs)}</strong>
-      <small>${formatNumber(user.totals?.eventCount)} events · ${formatNumber(user.totals?.backups)} backups</small>
-    </button>
-  `).join('');
+  userListEl.innerHTML = `
+    <table class="users-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>System</th>
+          <th>Version</th>
+          <th>IP</th>
+          <th>Last Active</th>
+          <th>Today Usage</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${users.map((user) => {
+          const userKey = user.userKey || user.deviceId;
+          return `
+          <tr class="user-row ${userKey === selectedUserId ? 'is-active' : ''}" data-user-id="${escapeHtml(userKey)}">
+            <td title="${escapeHtml(user.deviceId)}">${shortDeviceId(user.deviceId)}</td>
+            <td>${escapeHtml(userSystem(user))}</td>
+            <td>${escapeHtml(userVersion(user))}</td>
+            <td title="${escapeHtml(user.location || '')}">${escapeHtml(userIp(user))}</td>
+            <td>${formatDate(user.lastSeenAt)}</td>
+            <td>${formatDuration(user.totals?.todayDurationMs)}</td>
+          </tr>
+        `; }).join('')}
+      </tbody>
+    </table>
+  `;
 
-  for (const button of userListEl.querySelectorAll('[data-user-id]')) {
-    button.addEventListener('click', () => {
-      selectedUserId = button.dataset.userId;
+  for (const row of userListEl.querySelectorAll('[data-user-id]')) {
+    row.addEventListener('click', () => {
+      selectedUserId = row.dataset.userId;
       localStorage.setItem(storage.selectedUser, selectedUserId);
       renderUsers(data);
     });
@@ -597,7 +630,7 @@ function renderEvents(data) {
 function renderNewUsersToday(data) {
   const summary = data.newUsersToday || {};
   const users = summary.users || [];
-  newUsersSummaryEl.textContent = `${formatNumber(summary.count || users.length)} active · ${summary.date || ''}`;
+  newUsersSummaryEl.textContent = `${formatNumber(summary.count || users.length)} active device-version · ${summary.date || ''}`;
   if (users.length === 0) {
     newUsersListEl.innerHTML = '<div class="empty">No active users today.</div>';
     return;

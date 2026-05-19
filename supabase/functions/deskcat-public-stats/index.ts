@@ -204,10 +204,13 @@ Deno.serve(async (req) => {
       const productSiteViews = pageViews.count ?? 0;
       const githubDownloadCount = Number(githubDownloads.count ?? 0);
       const githubViews = Number(githubStats.views ?? 0);
+      const totalDeviceVersions = deviceVersions.count ?? devices.count ?? 0;
       return json({
         ok: true,
         generatedAt: new Date().toISOString(),
-        totalUsers: deviceVersions.count ?? devices.count ?? 0,
+        userDefinition: 'device_version',
+        totalUsers: totalDeviceVersions,
+        totalDeviceVersions,
         totalDevices: devices.count ?? 0,
         productSiteDownloads,
         githubDownloads: githubDownloadCount,

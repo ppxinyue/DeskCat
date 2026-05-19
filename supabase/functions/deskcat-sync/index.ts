@@ -182,7 +182,11 @@ Deno.serve(async (req) => {
         feature: event.feature,
         count: Math.max(1, Math.floor(Number(event.count) || 1)),
         duration_ms: Math.max(0, Math.floor(Number(event.durationMs) || 0)),
-        metadata: event.metadata ?? {},
+        metadata: {
+          ...(event.metadata ?? {}),
+          ...(appVersion ? { appVersion } : {}),
+          ...(platform ? { platform } : {}),
+        },
         client_created_at: event.createdAt,
       }));
       const { error: telemetryError } = await supabase

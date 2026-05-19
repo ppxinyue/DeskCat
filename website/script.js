@@ -342,7 +342,7 @@ async function refreshPublicStats() {
   const response = await fetch(publicStatsUrl, { cache: 'no-store' });
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error(data.error || `Stats failed: ${response.status}`);
-  totalUsersEl.textContent = formatStatNumber(data.totalUsers);
+  totalUsersEl.textContent = formatStatNumber(data.totalDeviceVersions ?? data.totalUsers);
   if (totalDownloadsEl) totalDownloadsEl.textContent = formatStatNumber(data.totalDownloads);
   if (totalViewsEl) totalViewsEl.textContent = formatStatNumber(data.totalViews);
   for (const node of githubStarsEls) node.textContent = formatStatNumber(data.githubStars);
