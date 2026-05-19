@@ -168,6 +168,45 @@
     background: transparent;
   }
 
+  .timeline-scroll-range {
+    width: 100%;
+    height: 18px;
+    accent-color: #1f8fff;
+    cursor: pointer;
+  }
+
+  .timeline-scroll-range::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  }
+
+  .timeline-scroll-range::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+    margin-top: -7px;
+    border: 2px solid #ffffff;
+    border-radius: 999px;
+    background: #1f8fff;
+    box-shadow: 0 4px 12px rgba(31, 143, 255, 0.28);
+    appearance: none;
+  }
+
+  .timeline-scroll-range::-moz-range-track {
+    height: 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  }
+
+  .timeline-scroll-range::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+    border: 2px solid #ffffff;
+    border-radius: 999px;
+    background: #1f8fff;
+    box-shadow: 0 4px 12px rgba(31, 143, 255, 0.28);
+  }
+
   body.has-background {
     @apply bg-background;
     pointer-events: auto;

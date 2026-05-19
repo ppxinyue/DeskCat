@@ -33,7 +33,7 @@ export function getRuntimeBuiltinGifAssetPath(path: string, optimized = USE_OPTI
 
 export const DEFAULT_MEDIA_CONFIG: PetMediaConfig = {
   idle: {
-    mediaMode: 'gif',
+    mediaMode: 'image',
     defaultAssets: [
       'assets/idle/png/idle.png',
       'assets/idle/png/idle2.png',
@@ -54,7 +54,7 @@ export const DEFAULT_MEDIA_CONFIG: PetMediaConfig = {
     userAnimatedType: null,
   },
   rest: {
-    mediaMode: 'gif',
+    mediaMode: 'image',
     defaultAssets: ['assets/idle/png/sleeping.png'],
     defaultGifAssets: [
       getRuntimeBuiltinGifAssetPath('assets/rest/gif/drinking_raw.GIF'),
@@ -72,7 +72,7 @@ export const DEFAULT_MEDIA_CONFIG: PetMediaConfig = {
     userAnimatedType: null,
   },
   work: {
-    mediaMode: 'gif',
+    mediaMode: 'image',
     defaultAssets: ['assets/idle/png/idle.png'],
     defaultGifAssets: [getRuntimeBuiltinGifAssetPath('assets/work/gif/working_clean.GIF')],
     userFrames: [],
@@ -82,7 +82,7 @@ export const DEFAULT_MEDIA_CONFIG: PetMediaConfig = {
     userAnimatedType: null,
   },
   drinking: {
-    mediaMode: 'gif',
+    mediaMode: 'image',
     defaultAssets: ['assets/idle/png/idle2.png'],
     defaultGifAssets: [getRuntimeBuiltinGifAssetPath('assets/rest/gif/IMG_3458.GIF')],
     userFrames: [],
@@ -92,7 +92,7 @@ export const DEFAULT_MEDIA_CONFIG: PetMediaConfig = {
     userAnimatedType: null,
   },
   thinking: {
-    mediaMode: 'gif',
+    mediaMode: 'image',
     defaultAssets: ['assets/idle/png/idle.png'],
     defaultGifAssets: [getRuntimeBuiltinGifAssetPath('assets/idle/gif/grooming.GIF')],
     userFrames: [],
@@ -102,7 +102,7 @@ export const DEFAULT_MEDIA_CONFIG: PetMediaConfig = {
     userAnimatedType: null,
   },
   sleeping: {
-    mediaMode: 'gif',
+    mediaMode: 'image',
     defaultAssets: ['assets/idle/png/sleeping.png', 'assets/idle/png/sleeping1.png'],
     defaultGifAssets: [getRuntimeBuiltinGifAssetPath('assets/idle/gif/idle_clean_1.GIF')],
     userFrames: [],

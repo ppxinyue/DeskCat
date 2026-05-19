@@ -9,6 +9,12 @@ import {
   normalizePetMediaConfig,
 } from './animations.ts';
 
+test('default pet media mode uses static images before GIFs', () => {
+  assert.equal(DEFAULT_MEDIA_CONFIG.idle.mediaMode, 'image');
+  assert.equal(DEFAULT_MEDIA_CONFIG.rest.mediaMode, 'image');
+  assert.equal(DEFAULT_MEDIA_CONFIG.work.mediaMode, 'image');
+});
+
 test('preserves disabled built-in image assets after normalization', () => {
   const disabledPath = DEFAULT_MEDIA_CONFIG.idle.defaultAssets[0];
   const customPath = '/Users/test/custom-cat.png';
