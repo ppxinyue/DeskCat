@@ -1587,6 +1587,16 @@ function PetWindow() {
     }
   }, [applyLayoutState, petImageWidth, petImageHeight, toolRowWidth, collapsedWidth, collapsedHeight, contextMenuLayout]);
 
+  useEffect(() => {
+    requestLayout().catch(() => {});
+    const unlisten = listen("pet:request-initial-layout", () => {
+      requestLayout().catch(() => {});
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [requestLayout]);
+
   const positionCompactChatWindow = useCallback(async ({
     show,
     windowLeft,
