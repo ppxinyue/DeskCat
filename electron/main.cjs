@@ -39,6 +39,7 @@ const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostic
 const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
 const { bundledIconCandidates, shouldHideApplicationMenu, shouldUseNativeWindowsIcon } = require('./appIcons.cjs');
 const { decodeDeskcatFileUrl } = require('./fileUrls.cjs');
+const { cleanupRuntime, shouldSkipUpdateCheck, updateCheckMethod } = require('./appRuntime.cjs');
 const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
 const { applyDefaultLaunchAtLogin, readLaunchAtLogin, setLaunchAtLogin } = require('./loginItems.cjs');
 const {
@@ -133,6 +134,7 @@ const claudeCodingState = {
   status: CODEX_STATUS.DONE,
   messages: [],
   running: null,
+  child: null,
   threadId: '',
 };
 const deskcatStartedAt = Date.now();
@@ -318,8 +320,9 @@ async function promptInstallDownloadedUpdate(info = {}) {
 }
 
 async function checkForAppUpdates({ manual = false } = {}) {
-  if (isDev || !app.isPackaged) {
-    const skipped = updateStatusPayload({ status: 'skipped', reason: 'development' });
+  const skip = shouldSkipUpdateCheck({ isDev, isPackaged: app.isPackaged, platform: process.platform });
+  if (skip.skip) {
+    const skipped = updateStatusPayload({ status: 'skipped', reason: skip.reason });
     if (manual) return skipped;
     return null;
   }
@@ -327,7 +330,8 @@ async function checkForAppUpdates({ manual = false } = {}) {
   if (updaterState.checking && !manual) return updateStatusPayload({ status: 'checking' });
   updaterState.lastCheckAt = Date.now();
   try {
-    const result = await autoUpdater.checkForUpdatesAndNotify();
+    const method = updateCheckMethod({ manual });
+    const result = await autoUpdater[method]();
     return updateStatusPayload({
       status: result?.updateInfo ? 'checked' : 'not-available',
       updateVersion: result?.updateInfo?.version || '',
@@ -3468,6 +3472,7 @@ async function sendClaudeCodingMessage({ prompt }) {
     env: getCodexEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  claudeCodingState.child = child;
   claudeCodingState.running = { type: 'claude-print', pid: child.pid, startedAt: Date.now(), lastOutputAt: Date.now() };
   let stdoutBuffer = '';
   child.stdout.on('data', (chunk) => {
@@ -3496,12 +3501,14 @@ async function sendClaudeCodingMessage({ prompt }) {
     }
   });
   child.on('error', (error) => {
+    if (claudeCodingState.child === child) claudeCodingState.child = null;
     claudeCodingState.running = null;
     claudeCodingState.status = CODEX_STATUS.NEEDS_INPUT;
     pushClaudeCodingMessage('error', `Claude Code 启动失败：${error.message}`);
     publishClaudeCodingState();
   });
   child.on('close', (code) => {
+    if (claudeCodingState.child === child) claudeCodingState.child = null;
     if (stdoutBuffer.trim()) {
       try {
         handleClaudePrintEvent(JSON.parse(stdoutBuffer.trim()));
@@ -4635,6 +4642,19 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (topmostGuard) clearInterval(topmostGuard);
-  shortcutRegistry.unregisterAll();
+  cleanupRuntime({
+    clearTopmostGuard: () => {
+      if (topmostGuard) clearInterval(topmostGuard);
+      topmostGuard = null;
+    },
+    shortcutRegistry,
+    windows,
+    tray,
+    codexAppServer,
+    claudeChild: claudeCodingState.child,
+  });
+  tray = null;
+  claudeCodingState.child = null;
+  codingState.running = null;
+  claudeCodingState.running = null;
 });
