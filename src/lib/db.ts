@@ -158,7 +158,9 @@ type Store = {
   };
 };
 
-const STORE_KEY = 'deskcat:electron-db:v1';
+export const CLOUD_SYNC_PENDING_EVENT = 'deskcat:cloud-sync-pending';
+export const CLOUD_SYNC_STORE_KEY = 'deskcat:electron-db:v1';
+const STORE_KEY = CLOUD_SYNC_STORE_KEY;
 const DEFAULT_CLOUD_SYNC_ENDPOINT = 'https://vuxzqebeirynkdyonzud.functions.supabase.co/deskcat-sync';
 const DEFAULT_CLOUD_SYNC_INGEST_TOKEN = 'deskcat-alpha-ingest-v1:FAX238zsJDzSlhfxbNJmY6q5Ij92oY6i';
 
@@ -245,6 +247,11 @@ function saveStore(store: Store) {
   localStorage.setItem(STORE_KEY, JSON.stringify(store));
 }
 
+function notifyCloudSyncPending() {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  window.dispatchEvent(new CustomEvent(CLOUD_SYNC_PENDING_EVENT));
+}
+
 function cloudBackupEnabled(store: Store) {
   return store.settings.cloudBackupEnabled !== 'false';
 }
@@ -312,7 +319,7 @@ function getClientPlatform() {
 
 function getClientAppVersion() {
   const env = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-  return env?.VITE_APP_VERSION?.trim() || null;
+  return env?.VITE_APP_VERSION?.trim() || (typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : null);
 }
 
 function getClientDeviceInfo() {
@@ -475,6 +482,7 @@ function mutate<T>(fn: (store: Store) => T, options: { backup?: boolean; backupR
   const result = fn(store);
   if (options.backup !== false) queueCloudBackup(store, options.backupReason ?? 'local-change');
   saveStore(store);
+  if (options.backup !== false) notifyCloudSyncPending();
   return result;
 }
 

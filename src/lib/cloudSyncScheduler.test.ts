@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { hasPendingCloudSync, recordTelemetryEvent, setSetting, syncCloudBackup } from './db.ts';
+import { CLOUD_SYNC_PENDING_EVENT, hasPendingCloudSync, recordTelemetryEvent, setSetting, syncCloudBackup } from './db.ts';
 
 class MemoryStorage {
   private store = new Map<string, string>();
@@ -34,10 +34,10 @@ Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
 });
 Object.defineProperty(globalThis, 'window', {
-  value: {
+  value: Object.assign(new EventTarget(), {
     screen: { width: 1440, height: 900 },
     devicePixelRatio: 1,
-  },
+  }),
   configurable: true,
 });
 
@@ -84,5 +84,22 @@ test('cloud sync sends the default ingest token', async () => {
       configurable: true,
     });
   }
+});
+
+test('local mutations notify the cloud sync scheduler', async () => {
+  storage.clear();
+
+  let notifications = 0;
+  const listener = () => {
+    notifications += 1;
+  };
+  window.addEventListener(CLOUD_SYNC_PENDING_EVENT, listener);
+  try {
+    await recordTelemetryEvent({ eventName: 'app.open', feature: 'app' });
+  } finally {
+    window.removeEventListener(CLOUD_SYNC_PENDING_EVENT, listener);
+  }
+
+  assert.equal(notifications, 1);
 });
 
