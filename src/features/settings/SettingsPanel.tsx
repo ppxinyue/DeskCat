@@ -341,21 +341,51 @@ function EditableInput({
   onChange,
   className,
   type = 'text',
+  deferCommit = false,
   ...props
 }: Omit<ComponentProps<typeof Input>, 'value' | 'onChange'> & {
   value: string | number;
   onChange: (value: string) => void;
+  deferCommit?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value ?? ''));
+  const composingRef = useRef(false);
+
+  useEffect(() => {
+    if (editing && deferCommit) return;
+    setDraft(String(value ?? ''));
+  }, [deferCommit, editing, value]);
+
+  const commitDraft = () => {
+    if (!deferCommit) return;
+    const nextValue = draft;
+    if (nextValue !== String(value ?? '')) onChange(nextValue);
+  };
 
   return (
     <div className="flex min-w-0 items-center gap-2">
       <Input
         {...props}
         type={type}
-        value={value}
+        value={deferCommit ? draft : value}
         readOnly={!editing}
-        onChange={(event) => onChange(event.target.value)}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={(event) => {
+          composingRef.current = false;
+          if (deferCommit) setDraft(event.currentTarget.value);
+        }}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          if (deferCommit) {
+            setDraft(nextValue);
+            return;
+          }
+          if (!composingRef.current) onChange(nextValue);
+        }}
+        onBlur={commitDraft}
         className={className}
       />
       <Button
@@ -363,7 +393,10 @@ function EditableInput({
         variant="outline"
         size="sm"
         className="h-8 shrink-0 px-2.5 text-[12px]"
-        onClick={() => setEditing((next) => !next)}
+        onClick={() => {
+          if (editing) commitDraft();
+          setEditing((next) => !next);
+        }}
       >
         {editing ? '完成' : '修改'}
       </Button>
@@ -3440,6 +3473,7 @@ function AISection({
             <EditableInput
               value={settings.petName}
               onChange={(value) => updateSetting('petName', value)}
+              deferCommit
               className="w-48"
             />
           </SettingRow>

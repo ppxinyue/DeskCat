@@ -28,3 +28,11 @@ test('Windows timeline has a larger range control for horizontal scrolling', () 
   assert.match(settingsSource, /className="timeline-scroll-range"/);
   assert.match(cssSource, /\.timeline-scroll-range/);
 });
+
+test('pet name input uses deferred commit to avoid interrupting IME composition', () => {
+  assert.match(settingsSource, /deferCommit\?: boolean/);
+  assert.match(settingsSource, /onCompositionStart/);
+  assert.match(settingsSource, /onCompositionEnd/);
+  assert.match(settingsSource, /if \(!composingRef\.current\) onChange\(nextValue\)/);
+  assert.match(settingsSource, /value=\{settings\.petName\}[\s\S]*?deferCommit/);
+});
