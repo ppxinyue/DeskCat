@@ -35,7 +35,7 @@ const {
   resolveSessionStatus,
 } = require('./codingStatus.cjs');
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
-const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
+const { clampBoundsToWorkArea, createPetWindowDebugInfo, isBoundsVisibleOnDisplays, windowSnapshot } = require('./windowDiagnostics.cjs');
 const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
 const { bundledIconCandidates, shouldHideApplicationMenu, shouldUseNativeWindowsIcon } = require('./appIcons.cjs');
 const { readDeskcatAppFile } = require('./appAssets.cjs');
@@ -1378,6 +1378,24 @@ function showPetWindow() {
   });
 }
 
+function forceShowPetWindowOnWindows(reason = 'force-show') {
+  if (process.platform !== 'win32') return false;
+  const win = windows.get('pet');
+  if (!win || win.isDestroyed?.()) return false;
+  const displays = screen.getAllDisplays();
+  const bounds = win.getBounds();
+  if (!isBoundsVisibleOnDisplays(bounds, displays)) {
+    const workArea = screen.getPrimaryDisplay().workArea;
+    win.setBounds(clampBoundsToWorkArea(bounds, workArea));
+  }
+  applyFloatingFullscreenBehavior(win, { force: true });
+  win.showInactive();
+  applyFloatingFullscreenBehavior(win, { force: true });
+  win.moveTop?.();
+  console.info('[pet:show]', reason, readPetWindowDebugInfo());
+  return true;
+}
+
 function recoverPetWindowIfNeeded() {
   const win = windows.get('pet');
   if (!shouldRecoverPetWindow({
@@ -1389,6 +1407,7 @@ function recoverPetWindowIfNeeded() {
     return false;
   }
   showPetWindow();
+  forceShowPetWindowOnWindows('recover');
   updateTrayMenu();
   return true;
 }
@@ -4379,6 +4398,7 @@ const handlers = {
     petVisibilityController.markLayoutReady(win, {
       applyTopmost: (target) => applyFloatingFullscreenBehavior(target, { force: true }),
     });
+    forceShowPetWindowOnWindows('layout-ready');
   },
   resize_compact_chat_window: ({ height }) => {
     if (Date.now() < compactChatHiddenUntil) return;

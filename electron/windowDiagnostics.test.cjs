@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
+  clampBoundsToWorkArea,
   createPetWindowDebugInfo,
   isBoundsVisibleOnDisplays,
   rectsIntersect,
@@ -57,6 +58,16 @@ test('bounds visibility supports multi-monitor and negative coordinates', () => 
   assert.equal(isBoundsVisibleOnDisplays({ x: -100, y: 20, width: 80, height: 80 }, displays), true);
   assert.equal(isBoundsVisibleOnDisplays({ x: 4000, y: 20, width: 80, height: 80 }, displays), false);
   assert.equal(isBoundsVisibleOnDisplays({ x: 0, y: 0, width: 0, height: 80 }, displays), false);
+});
+
+test('clamps hidden pet bounds back inside the primary work area', () => {
+  assert.deepEqual(
+    clampBoundsToWorkArea(
+      { x: 4000, y: -100, width: 220, height: 300 },
+      { x: 0, y: 0, width: 1920, height: 1040 },
+    ),
+    { x: 1684, y: 16, width: 220, height: 300 },
+  );
 });
 
 test('pet debug info combines window snapshots with display visibility', () => {

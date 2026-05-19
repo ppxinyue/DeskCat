@@ -23,6 +23,22 @@ function isBoundsVisibleOnDisplays(bounds, displays) {
   return (displays || []).some((display) => rectsIntersect(bounds, display.workArea || display.bounds));
 }
 
+function clampBoundsToWorkArea(bounds, workArea, margin = 16) {
+  if (!bounds || !workArea) return bounds;
+  const width = Math.max(1, Math.round(bounds.width || 1));
+  const height = Math.max(1, Math.round(bounds.height || 1));
+  const minX = Math.round(workArea.x + margin);
+  const minY = Math.round(workArea.y + margin);
+  const maxX = Math.round(workArea.x + workArea.width - width - margin);
+  const maxY = Math.round(workArea.y + workArea.height - height - margin);
+  return {
+    x: Math.min(Math.max(Math.round(bounds.x || 0), minX), Math.max(minX, maxX)),
+    y: Math.min(Math.max(Math.round(bounds.y || 0), minY), Math.max(minY, maxY)),
+    width,
+    height,
+  };
+}
+
 function createPetWindowDebugInfo({ petWindow, compactWindow, displays, visibilityState }) {
   const pet = windowSnapshot(petWindow);
   return {
@@ -40,6 +56,7 @@ function createPetWindowDebugInfo({ petWindow, compactWindow, displays, visibili
 }
 
 module.exports = {
+  clampBoundsToWorkArea,
   createPetWindowDebugInfo,
   isBoundsVisibleOnDisplays,
   rectsIntersect,

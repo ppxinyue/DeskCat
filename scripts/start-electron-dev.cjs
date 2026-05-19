@@ -1,4 +1,5 @@
 const { spawn } = require('node:child_process');
+const { cleanupWorkspaceElectronProcesses } = require('./start-electron-prod.cjs');
 
 const DEFAULT_DEV_SERVER_URL = 'http://127.0.0.1:5173';
 
@@ -13,8 +14,15 @@ function createElectronDevArgs(appPath = '.') {
   return [require.resolve('electron/cli.js'), appPath];
 }
 
-function startElectronDev({ env = process.env, appPath = '.', stdio = 'inherit' } = {}) {
-  const child = spawn(process.execPath, createElectronDevArgs(appPath), {
+async function startElectronDev({
+  env = process.env,
+  appPath = '.',
+  stdio = 'inherit',
+  cleanup = cleanupWorkspaceElectronProcesses,
+  spawnFn = spawn,
+} = {}) {
+  await cleanup();
+  const child = spawnFn(process.execPath, createElectronDevArgs(appPath), {
     env: createElectronDevEnv(env),
     stdio,
   });

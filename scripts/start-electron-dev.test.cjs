@@ -5,6 +5,7 @@ const {
   DEFAULT_DEV_SERVER_URL,
   createElectronDevArgs,
   createElectronDevEnv,
+  startElectronDev,
 } = require('./start-electron-dev.cjs');
 const {
   cleanupWorkspaceElectronProcesses,
@@ -30,6 +31,20 @@ test('Electron dev command uses the Node CLI entry instead of shell env assignme
 
   assert.equal(args[1], '.');
   assert.match(args[0], /electron[\\/]cli\.js$/);
+});
+
+test('Electron dev launcher performs the same stale process cleanup as prod launcher', async () => {
+  const child = await startElectronDev({
+    appPath: '.',
+    stdio: 'ignore',
+    env: { PATH: 'test-path' },
+    cleanup: () => Promise.resolve(true),
+    spawnFn: (_command, _args, _options) => ({
+      on: () => {},
+    }),
+  });
+
+  assert.equal(typeof child.on, 'function');
 });
 
 test('Electron prod command uses the Node CLI entry', () => {
