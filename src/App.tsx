@@ -40,7 +40,6 @@ const SCREEN_MARGIN = 16;
 const PET_CONTENT_MARGIN = 20;
 const MIN_DIALOG_WIDTH = 200;
 const MIN_DIALOG_HEIGHT = 90;
-const COMPACT_CHAT_SIDE_CHROME = 10;
 const COMPACT_CHAT_TOP_CHROME = 20;
 const COMPACT_CHAT_BOTTOM_CHROME = 10;
 const COMPACT_CHAT_PREFERRED_HEIGHT = 340;
@@ -3259,12 +3258,11 @@ async function getCompactChatGeometry({
   const petY = baseWindowTop + layout.petTop;
   const safeWidth = Math.max(MIN_DIALOG_WIDTH, safeRight - safeLeft);
   const safeHeight = Math.max(MIN_DIALOG_HEIGHT, safeBottom - safeTop);
-  const contentWidth = clamp(
+  const outerWidth = clamp(
     requestedDialogWidth,
     MIN_DIALOG_WIDTH,
-    Math.max(MIN_DIALOG_WIDTH, safeWidth - COMPACT_CHAT_SIDE_CHROME * 2),
+    safeWidth,
   );
-  const outerWidth = Math.min(safeWidth, contentWidth + COMPACT_CHAT_SIDE_CHROME * 2);
   const outerChromeY = COMPACT_CHAT_TOP_CHROME + COMPACT_CHAT_BOTTOM_CHROME;
   const preferredContentHeight = compact ? 128 : COMPACT_CHAT_PREFERRED_HEIGHT;
   const preferredOuterHeight = preferredContentHeight + outerChromeY;
