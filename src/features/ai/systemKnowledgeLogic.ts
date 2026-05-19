@@ -32,6 +32,11 @@ export interface SchedulePermissionResult {
 const CALENDAR_TRIGGER = /(日历|日程|会议|安排|calendar|schedule|event|meeting)/i;
 const REMINDERS_TRIGGER = /(待办|提醒|todo|task|reminder)/i;
 
+export function isSystemKnowledgeSupportedPlatform(platform = '', userAgent = ''): boolean {
+  const value = `${platform || ''} ${userAgent || ''}`;
+  return /mac/i.test(value) && !/win/i.test(value);
+}
+
 export class SystemKnowledgePermissionError extends Error {
   constructor(message: string) {
     super(message);

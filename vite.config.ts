@@ -15,6 +15,7 @@ export default defineConfig(({ command }) => ({
     __OPTIMIZED_PET_ASSETS__: JSON.stringify(command === 'build'),
   },
   build: {
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -35,12 +35,33 @@ const {
   resolveSessionStatus,
 } = require('./codingStatus.cjs');
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
+const { clampBoundsToWorkArea, createPetWindowDebugInfo, isBoundsVisibleOnDisplays, windowSnapshot } = require('./windowDiagnostics.cjs');
+const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
+const {
+  bundledIconCandidates,
+  shouldHideApplicationMenu,
+  shouldUseDynamicPetAppIcon,
+  shouldUseNativeWindowsIcon,
+} = require('./appIcons.cjs');
+const { readDeskcatAppFile } = require('./appAssets.cjs');
+const { decodeDeskcatFileUrl } = require('./fileUrls.cjs');
+const {
+  cleanupRuntime,
+  configureSingleInstanceLock,
+  shouldRecoverPetWindow,
+  shouldSkipUpdateCheck,
+  updateCheckMethod,
+} = require('./appRuntime.cjs');
+const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
+const { applyDefaultLaunchAtLogin, readLaunchAtLogin, setLaunchAtLogin } = require('./loginItems.cjs');
 const {
   hasSeenWelcomePermissionPrompt,
   markWelcomePermissionPromptSeen,
   readImageDataUrl,
 } = require('./welcomePermissionPrompt.cjs');
 const { createSecureKeyStore } = require('./secureKeyStore.cjs');
+const { readActiveWindowWindows } = require('./platform/windowsActivity.cjs');
+const { createWindowsBackgroundMarkers, readWindowsProcesses } = require('./platform/windowsProcesses.cjs');
 const { autoUpdater } = require('electron-updater');
 
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -54,6 +75,10 @@ const debugTimelineEnabled =
 const windows = new Map();
 const windowShowController = createDeferredWindowShowController();
 const petVisibilityController = createPetVisibilityController();
+const shortcutRegistry = createGlobalShortcutRegistry({
+  globalShortcut,
+  onChatFocus: () => broadcast('shortcut:chat-focus', {}),
+});
 const updaterState = {
   initialized: false,
   checking: false,
@@ -62,6 +87,7 @@ const updaterState = {
   lastError: '',
   lastCheckAt: 0,
 };
+let singleInstanceLock = { locked: true, registered: false };
 let topmostGuard = null;
 let topmostSuppressed = false;
 let compactChatHiddenUntil = 0;
@@ -121,6 +147,7 @@ const claudeCodingState = {
   status: CODEX_STATUS.DONE,
   messages: [],
   running: null,
+  child: null,
   threadId: '',
 };
 const deskcatStartedAt = Date.now();
@@ -165,6 +192,7 @@ function escapeHtml(value) {
 
 app.setName('DeskCat');
 if (process.platform === 'darwin') app.setActivationPolicy('regular');
+if (shouldHideApplicationMenu(process.platform)) Menu.setApplicationMenu(null);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -305,8 +333,9 @@ async function promptInstallDownloadedUpdate(info = {}) {
 }
 
 async function checkForAppUpdates({ manual = false } = {}) {
-  if (isDev || !app.isPackaged) {
-    const skipped = updateStatusPayload({ status: 'skipped', reason: 'development' });
+  const skip = shouldSkipUpdateCheck({ isDev, isPackaged: app.isPackaged, platform: process.platform });
+  if (skip.skip) {
+    const skipped = updateStatusPayload({ status: 'skipped', reason: skip.reason });
     if (manual) return skipped;
     return null;
   }
@@ -314,7 +343,8 @@ async function checkForAppUpdates({ manual = false } = {}) {
   if (updaterState.checking && !manual) return updateStatusPayload({ status: 'checking' });
   updaterState.lastCheckAt = Date.now();
   try {
-    const result = await autoUpdater.checkForUpdatesAndNotify();
+    const method = updateCheckMethod({ manual });
+    const result = await autoUpdater[method]();
     return updateStatusPayload({
       status: result?.updateInfo ? 'checked' : 'not-available',
       updateVersion: result?.updateInfo?.version || '',
@@ -329,14 +359,7 @@ async function checkForAppUpdates({ manual = false } = {}) {
 }
 
 function compactChatWindowSnapshot(win) {
-  if (!win || win.isDestroyed()) return { exists: false };
-  return {
-    exists: true,
-    visible: win.isVisible(),
-    focused: win.isFocused(),
-    alwaysOnTop: win.isAlwaysOnTop(),
-    bounds: win.getBounds(),
-  };
+  return windowSnapshot(win);
 }
 
 function debugCompactChat(message, details = {}) {
@@ -354,40 +377,31 @@ function applyFloatingFullscreenBehavior(win, options = {}) {
   const force = Boolean(options.force);
   const isCompactChat = win === windows.get('compact-chat');
   const isPet = win === windows.get('pet');
+  const windowRole = isCompactChat ? 'compact-chat' : isPet ? 'pet' : 'generic';
   if (isCompactChat) {
     debugCompactChat('apply floating requested', { force, snapshot: compactChatWindowSnapshot(win) });
   }
   if (topmostSuppressed) {
-    win.setAlwaysOnTop(false);
+    applyTopmostPolicy(win, resolveTopmostPolicy({ suppressed: true }));
     if (isCompactChat) debugCompactChat('apply floating suppressed', { snapshot: compactChatWindowSnapshot(win) });
     return;
   }
-  if (process.platform === 'darwin') {
-    if (!force && floatingConfiguredWindows.has(win) && win.isAlwaysOnTop()) return;
-    if (app.dock) app.dock.show();
-    win.setSkipTaskbar(false);
-    win.setVisibleOnAllWorkspaces(true, {
-      visibleOnFullScreen: true,
-      skipTransformProcessType: true,
-    });
-    win.setFullScreenable(false);
-    if (isCompactChat) {
-      win.setAlwaysOnTop(true, 'floating', 0);
-    } else {
-      const relativeLevel = isPet && petContextMenuOpen ? 2 : 1;
-      win.setAlwaysOnTop(true, 'screen-saver', relativeLevel);
-    }
-    floatingConfiguredWindows.add(win);
-    if (force) win.moveTop();
-    if (isCompactChat) debugCompactChat('apply floating darwin done', { force, snapshot: compactChatWindowSnapshot(win) });
-  } else {
-    if (!force && !isCompactChat && floatingConfiguredWindows.has(win) && win.isAlwaysOnTop()) return;
-    const level = isCompactChat ? 'screen-saver' : 'normal';
-    win.setAlwaysOnTop(true, level);
-    win.setSkipTaskbar(true);
-    floatingConfiguredWindows.add(win);
-    if (isCompactChat) debugCompactChat('apply floating non-darwin done', { level, force, snapshot: compactChatWindowSnapshot(win) });
-  }
+  if (shouldSkipTopmostApply({
+    platform: process.platform,
+    force,
+    isCompactChat,
+    alreadyConfigured: floatingConfiguredWindows.has(win),
+    alwaysOnTop: win.isAlwaysOnTop(),
+  })) return;
+  const policy = resolveTopmostPolicy({
+    platform: process.platform,
+    windowRole,
+    force,
+    petContextMenuOpen,
+  });
+  applyTopmostPolicy(win, policy, { dock: app.dock });
+  floatingConfiguredWindows.add(win);
+  if (isCompactChat) debugCompactChat('apply floating done', { policy, force, snapshot: compactChatWindowSnapshot(win) });
 }
 
 function makeSquareIcon(iconPath, size = 512) {
@@ -525,6 +539,17 @@ function createWindow(label, options) {
     webPreferences: preload(label),
   });
   windows.set(label, win);
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[${label}] failed to load ${validatedURL}: ${errorCode} ${errorDescription}`);
+  });
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[${label}] renderer process gone: ${details?.reason || 'unknown'}`);
+  });
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    const severity = level >= 2 ? 'error' : level === 1 ? 'warn' : 'log';
+    if (severity === 'log') return;
+    console[severity](`[${label}] ${message} (${sourceId}:${line})`);
+  });
   win.loadURL(rendererUrl(label));
   win.setTitle('');
   win.on('move', () => send(win, 'window:moved', null));
@@ -605,22 +630,30 @@ function resolveAppIconPath(iconPath) {
 }
 
 function resolveBundledAppIconPath() {
-  const candidates = [
-    path.join(app.getAppPath(), 'public', 'assets', 'idle', 'png', 'idle.png'),
-    path.join(app.getAppPath(), 'src-tauri', 'icons', '32x32.png'),
-    path.join(app.getAppPath(), 'src-tauri', 'icons', 'icon.png'),
-    currentAppIconPath,
-    path.join(app.getAppPath(), 'dist', 'favicon.svg'),
-    path.join(app.getAppPath(), 'public', 'favicon.svg'),
-  ];
+  const candidates = bundledIconCandidates(app.getAppPath(), {
+    platform: process.platform,
+    fallbackIconPath: currentAppIconPath,
+  });
   return candidates.find((candidate) => fs.existsSync(candidate)) || currentAppIconPath;
+}
+
+function makeTrayIconImage(iconPath) {
+  if (!fs.existsSync(iconPath)) return nativeImage.createEmpty();
+  if (shouldUseNativeWindowsIcon(iconPath, process.platform)) {
+    const image = nativeImage.createFromPath(iconPath);
+    if (!image.isEmpty()) image.setTemplateImage(false);
+    return image;
+  }
+  return makeIconImage(iconPath, process.platform === 'win32' ? 32 : 18);
 }
 
 function setAppIcon(iconPath) {
   const resolved = resolveAppIconPath(iconPath);
   if (!fs.existsSync(resolved)) return false;
   currentAppIconPath = resolved;
-  const image = makeProportionalIcon(resolved, 512);
+  const image = shouldUseNativeWindowsIcon(resolved, process.platform)
+    ? nativeImage.createFromPath(resolved)
+    : makeProportionalIcon(resolved, 512);
   if (image.isEmpty()) return false;
   currentAppIcon = image;
   if (process.platform === 'darwin' && app.dock) {
@@ -628,7 +661,7 @@ function setAppIcon(iconPath) {
     app.dock.show();
     app.dock.setIcon(dockImage.isEmpty() ? image : dockImage);
   }
-  const trayImage = makeIconImage(resolved, 18);
+  const trayImage = makeTrayIconImage(resolved);
   if (!trayImage.isEmpty()) {
     if (!tray) {
       tray = new Tray(trayImage);
@@ -734,8 +767,11 @@ return frontApp & linefeed & frontWindow & linefeed & isFullscreen & linefeed & 
 }
 
 function readActiveWindow() {
+  if (process.platform === 'win32') {
+    return readActiveWindowWindows({ log: timelineDebugLog });
+  }
   if (process.platform !== 'darwin') {
-    return Promise.resolve({ supported: false, appName: '', windowTitle: '', error: 'unsupported' });
+    return Promise.resolve({ supported: false, appName: '', windowTitle: '', url: '', error: 'unsupported' });
   }
   return new Promise((resolve) => {
     execFile('/usr/bin/osascript', ['-e', activeWindowScript()], { timeout: 2500 }, (error, stdout, stderr) => {
@@ -754,6 +790,7 @@ function readActiveWindow() {
         supported: true,
         appName: appName.trim(),
         windowTitle: titleParts.join('\n').trim(),
+        url: '',
         error: null,
       });
     });
@@ -966,6 +1003,10 @@ async function readNeteaseNowPlaying(appName, minSegmentMs = 60_000) {
 }
 
 function readRunningProcessNames() {
+  if (process.platform === 'win32') {
+    return readWindowsProcesses({ log: timelineDebugLog })
+      .then((rows) => rows.map((row) => row.name).filter(Boolean));
+  }
   if (process.platform !== 'darwin') {
     return Promise.resolve([]);
   }
@@ -983,6 +1024,11 @@ function readRunningProcessNames() {
 }
 
 function readShellProcessMarkers() {
+  if (process.platform === 'win32') {
+    return readWindowsProcesses({ log: timelineDebugLog })
+      .then((rows) => createWindowsBackgroundMarkers(rows, { ownPid: process.pid })
+        .filter((marker) => marker.type === 'terminal'));
+  }
   if (process.platform !== 'darwin') return Promise.resolve([]);
   return new Promise((resolve) => {
     execFile('/bin/ps', ['-axo', 'pid=', '-o', 'command='], { timeout: 1800 }, (error, stdout) => {
@@ -1057,6 +1103,18 @@ function compactTerminalCommands(commands) {
 }
 
 async function readTimelineBackgroundMarkers({ musicAppKeywords, minSegmentMs } = {}) {
+  if (process.platform === 'win32') {
+    const processes = await readWindowsProcesses({ log: timelineDebugLog });
+    const markers = createWindowsBackgroundMarkers(processes, { musicAppKeywords, ownPid: process.pid });
+    timelineDebugLog({
+      stage: 'background:markers',
+      message: markers.length > 0
+        ? markers.map((marker) => `${marker.type}:${marker.name}:${marker.detail}`).join(' | ')
+        : 'none',
+    });
+    return markers;
+  }
+
   const processes = await readRunningProcessNames();
 
   const markers = [];
@@ -1106,7 +1164,7 @@ async function readTimelineBackgroundMarkers({ musicAppKeywords, minSegmentMs } 
 }
 
 async function readTimelineBackgroundOnly({ musicAppKeywords, minSegmentMs } = {}) {
-  if (process.platform !== 'darwin') return { supported: false, background: [], error: 'unsupported', checkedAt: Date.now() };
+  if (process.platform !== 'darwin' && process.platform !== 'win32') return { supported: false, background: [], error: 'unsupported', checkedAt: Date.now() };
   const background = await readTimelineBackgroundMarkers({ musicAppKeywords, minSegmentMs });
   return { supported: true, background, error: null, checkedAt: Date.now() };
 }
@@ -1126,7 +1184,7 @@ function readSystemActivityState({ idleThresholdSeconds } = {}) {
 }
 
 async function readTimelineActiveWindow({ musicAppKeywords, minSegmentMs } = {}) {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
     return { supported: false, appName: '', windowTitle: '', url: '', background: [], error: 'unsupported' };
   }
   const active = await readActiveWindow();
@@ -1135,8 +1193,10 @@ async function readTimelineActiveWindow({ musicAppKeywords, minSegmentMs } = {})
   }
 
   const [url, background] = await Promise.all([
-    readBrowserUrl(active.appName),
-    readTimelineBackgroundMarkers({ musicAppKeywords, minSegmentMs }),
+    process.platform === 'darwin' ? readBrowserUrl(active.appName) : Promise.resolve(''),
+    (process.platform === 'darwin' || process.platform === 'win32')
+      ? readTimelineBackgroundMarkers({ musicAppKeywords, minSegmentMs })
+      : Promise.resolve([]),
   ]);
   return {
     supported: true,
@@ -1305,12 +1365,56 @@ function isPetVisible() {
   return Boolean(win && !win.isDestroyed() && win.isVisible());
 }
 
+function readPetWindowDebugInfo() {
+  return createPetWindowDebugInfo({
+    petWindow: windows.get('pet'),
+    compactWindow: windows.get('compact-chat'),
+    displays: screen.getAllDisplays(),
+    visibilityState: petVisibilityController.getState(),
+  });
+}
+
 function showPetWindow() {
   const win = windows.get('pet') || createPetWindow();
   petVisibilityController.requestShow(win, {
     requestLayout: (target) => send(target, 'pet:request-initial-layout', {}),
     applyTopmost: (target) => applyFloatingFullscreenBehavior(target, { force: true }),
+    fallbackShowMs: process.platform === 'win32' ? 2500 : 0,
   });
+}
+
+function forceShowPetWindowOnWindows(reason = 'force-show') {
+  if (process.platform !== 'win32') return false;
+  const win = windows.get('pet');
+  if (!win || win.isDestroyed?.()) return false;
+  const displays = screen.getAllDisplays();
+  const bounds = win.getBounds();
+  if (!isBoundsVisibleOnDisplays(bounds, displays)) {
+    const workArea = screen.getPrimaryDisplay().workArea;
+    win.setBounds(clampBoundsToWorkArea(bounds, workArea));
+  }
+  applyFloatingFullscreenBehavior(win, { force: true });
+  win.showInactive();
+  applyFloatingFullscreenBehavior(win, { force: true });
+  win.moveTop?.();
+  console.info('[pet:show]', reason, readPetWindowDebugInfo());
+  return true;
+}
+
+function recoverPetWindowIfNeeded() {
+  const win = windows.get('pet');
+  if (!shouldRecoverPetWindow({
+    platform: process.platform,
+    hasWindow: Boolean(win),
+    destroyed: Boolean(win?.isDestroyed?.()),
+    visible: Boolean(win?.isVisible?.()),
+  })) {
+    return false;
+  }
+  showPetWindow();
+  forceShowPetWindowOnWindows('recover');
+  updateTrayMenu();
+  return true;
 }
 
 function hidePetWindow() {
@@ -1336,6 +1440,23 @@ function updateTrayMenu() {
     { type: 'separator' },
     { label: '退出', click: () => app.quit() },
   ]));
+}
+
+function registerAppGlobalShortcuts({ globalShortcut: chatShortcut } = {}) {
+  return shortcutRegistry.registerChatShortcut(chatShortcut || DEFAULT_GLOBAL_SHORTCUT);
+}
+
+function handleRendererEvent(channel, payload) {
+  if (channel === 'settings:updated') {
+    const nextShortcut =
+      payload?.key === 'globalShortcut'
+        ? payload.value
+        : payload && typeof payload === 'object' && 'globalShortcut' in payload
+          ? payload.globalShortcut
+          : null;
+    if (nextShortcut) registerAppGlobalShortcuts({ globalShortcut: nextShortcut });
+  }
+  broadcast(channel, payload);
 }
 
 function ensureTopmostGuard() {
@@ -1434,9 +1555,15 @@ function showCompactChatWindow({ x, y, w, h, force = false }, show = true) {
     debugCompactChat('position compact chat', {
       x: Math.round(x),
       y: Math.round(y),
+      w: Math.round(w),
+      h: Math.round(h),
       snapshot: compactChatWindowSnapshot(existing),
     });
-    existing.setPosition(Math.round(x), Math.round(y));
+    if (process.platform === 'win32') {
+      existing.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
+    } else {
+      existing.setPosition(Math.round(x), Math.round(y));
+    }
     existing.setIgnoreMouseEvents(false);
     applyFloatingFullscreenBehavior(existing);
     debugCompactChat('position compact chat applied', { snapshot: compactChatWindowSnapshot(existing) });
@@ -3398,6 +3525,7 @@ async function sendClaudeCodingMessage({ prompt }) {
     env: getCodexEnv(),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  claudeCodingState.child = child;
   claudeCodingState.running = { type: 'claude-print', pid: child.pid, startedAt: Date.now(), lastOutputAt: Date.now() };
   let stdoutBuffer = '';
   child.stdout.on('data', (chunk) => {
@@ -3426,12 +3554,14 @@ async function sendClaudeCodingMessage({ prompt }) {
     }
   });
   child.on('error', (error) => {
+    if (claudeCodingState.child === child) claudeCodingState.child = null;
     claudeCodingState.running = null;
     claudeCodingState.status = CODEX_STATUS.NEEDS_INPUT;
     pushClaudeCodingMessage('error', `Claude Code 启动失败：${error.message}`);
     publishClaudeCodingState();
   });
   child.on('close', (code) => {
+    if (claudeCodingState.child === child) claudeCodingState.child = null;
     if (stdoutBuffer.trim()) {
       try {
         handleClaudePrintEvent(JSON.parse(stdoutBuffer.trim()));
@@ -4218,6 +4348,10 @@ const handlers = {
   focus_compact_chat_input: () => broadcast('compact-chat:focus-input', {}),
   show_pet_window: () => showPetWindow(),
   hide_pet_window: () => hidePetWindow(),
+  is_pet_window_visible: () => isPetVisible(),
+  read_pet_window_debug_info: () => readPetWindowDebugInfo(),
+  register_global_shortcuts: registerAppGlobalShortcuts,
+  read_global_shortcut_status: () => shortcutRegistry.getState(),
   read_pet_presence_context: readPetPresenceContext,
   quit_app: () => app.quit(),
   pin_pet_above_fullscreen_cmd: () => applyFloatingFullscreenBehavior(windows.get('pet'), { force: true }),
@@ -4236,13 +4370,15 @@ const handlers = {
     petContextMenuOpen = Boolean(open);
     const pet = windows.get('pet');
     if (pet && !pet.isDestroyed()) {
-      applyFloatingFullscreenBehavior(pet, { force: true });
-      if (petContextMenuOpen) pet.moveTop();
+      if (process.platform !== 'win32') {
+        applyFloatingFullscreenBehavior(pet, { force: true });
+        if (petContextMenuOpen) pet.moveTop();
+      }
     }
     if (!petContextMenuOpen) {
       const compact = windows.get('compact-chat');
       if (compact && !compact.isDestroyed() && compact.isVisible()) {
-        applyFloatingFullscreenBehavior(compact, { force: true });
+        if (process.platform !== 'win32') applyFloatingFullscreenBehavior(compact, { force: true });
       }
     }
     debugCompactChat(petContextMenuOpen ? 'pet context menu raised' : 'pet context menu closed', {
@@ -4275,6 +4411,7 @@ const handlers = {
     petVisibilityController.markLayoutReady(win, {
       applyTopmost: (target) => applyFloatingFullscreenBehavior(target, { force: true }),
     });
+    forceShowPetWindowOnWindows('layout-ready');
   },
   resize_compact_chat_window: ({ height }) => {
     if (Date.now() < compactChatHiddenUntil) return;
@@ -4327,11 +4464,8 @@ const handlers = {
   read_timeline_active_window: readTimelineActiveWindow,
   read_timeline_background_markers: readTimelineBackgroundOnly,
   read_system_activity_state: readSystemActivityState,
-  get_launch_at_login: () => app.getLoginItemSettings().openAtLogin,
-  set_launch_at_login: ({ enabled }) => {
-    app.setLoginItemSettings({ openAtLogin: Boolean(enabled), openAsHidden: false });
-    return app.getLoginItemSettings().openAtLogin;
-  },
+  get_launch_at_login: () => readLaunchAtLogin(app),
+  set_launch_at_login: ({ enabled }) => setLaunchAtLogin(app, enabled),
   coding_get_state: () => publishCodingState(),
   coding_get_claude_state: () => publishClaudeCodingState(),
   coding_get_inherited_state: getInheritedCodingState,
@@ -4352,7 +4486,11 @@ const handlers = {
     if (!claudeCodingState.running) claudeCodingState.status = CODEX_STATUS.DONE;
     return publishClaudeCodingState();
   },
-  set_app_icon: ({ path: iconPath }) => setAppIcon(iconPath),
+  set_app_icon: ({ path: iconPath }) => (
+    shouldUseDynamicPetAppIcon(process.platform)
+      ? setAppIcon(iconPath)
+      : setAppIcon(resolveBundledAppIconPath())
+  ),
   move_pet_and_compact_chat: ({ pet, compact }, event) => {
     const petWin = BrowserWindow.fromWebContents(event.sender) || windows.get('pet');
     const compactWin = windows.get('compact-chat');
@@ -4368,7 +4506,17 @@ const handlers = {
       Number.isFinite(Number(compact.x)) &&
       Number.isFinite(Number(compact.y))
     ) {
-      compactWin.setPosition(Math.round(Number(compact.x)), Math.round(Number(compact.y)));
+      if (process.platform === 'win32' && Number.isFinite(Number(compact.w))) {
+        const currentBounds = compactWin.getBounds();
+        compactWin.setBounds({
+          x: Math.round(Number(compact.x)),
+          y: Math.round(Number(compact.y)),
+          width: Math.round(Number(compact.w)),
+          height: currentBounds.height,
+        });
+      } else {
+        compactWin.setPosition(Math.round(Number(compact.x)), Math.round(Number(compact.y)));
+      }
       compactWin.setIgnoreMouseEvents(false);
     }
     return null;
@@ -4394,7 +4542,7 @@ ipcMain.handle('deskcat:invoke', async (_event, command, args) => {
 });
 
 ipcMain.handle('deskcat:emit', (_event, channel, payload) => {
-  broadcast(channel, payload);
+  handleRendererEvent(channel, payload);
 });
 
 ipcMain.handle('deskcat:window', (event, action, value) => {
@@ -4523,17 +4671,26 @@ function normalizeDocumentText(text) {
 ipcMain.handle('deskcat:pick-chat-image', async (event) => pickChatAttachment(event));
 ipcMain.handle('deskcat:pick-chat-attachment', async (event) => pickChatAttachment(event));
 
+singleInstanceLock = configureSingleInstanceLock(app, {
+  onSecondInstance: () => {
+    recoverPetWindowIfNeeded();
+    const win = windows.get('pet');
+    if (win && !win.isDestroyed?.()) applyFloatingFullscreenBehavior(win, { force: true });
+  },
+});
+
 function registerProtocols() {
   protocol.handle('deskcat-app', async (request) => {
-    const url = new URL(request.url);
-    const pathname = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
-    const filePath = path.join(app.getAppPath(), 'dist', pathname.replace(/^\/+/, ''));
-    return new Response(await fsp.readFile(filePath), {
+    const { filePath, bytes } = await readDeskcatAppFile({
+      appPath: app.getAppPath(),
+      requestUrl: request.url,
+    });
+    return new Response(bytes, {
       headers: { 'content-type': contentType(filePath) },
     });
   });
   protocol.handle('deskcat-file', async (request) => {
-    const filePath = decodeURIComponent(new URL(request.url).pathname.replace(/^\/+/, ''));
+    const filePath = decodeDeskcatFileUrl(request.url);
     return new Response(await fsp.readFile(filePath), {
       headers: { 'content-type': contentType(filePath) },
     });
@@ -4541,11 +4698,13 @@ function registerProtocols() {
 }
 
 app.whenReady().then(() => {
+  if (!singleInstanceLock.locked) return;
   registerProtocols();
   secureKeyStore = createSecureKeyStore({ userDataPath: app.getPath('userData'), safeStorage });
-  app.setLoginItemSettings({ openAtLogin: true, openAsHidden: false });
+  applyDefaultLaunchAtLogin(app);
   setAppIcon(resolveBundledAppIconPath());
-  createPetWindow();
+  showPetWindow();
+  if (process.platform === 'win32') setTimeout(() => recoverPetWindowIfNeeded(), 3500);
   ensureTopmostGuard();
   setTimeout(() => {
     checkForAppUpdates().catch((error) => {
@@ -4553,7 +4712,7 @@ app.whenReady().then(() => {
       broadcastUpdateStatus('error');
     });
   }, 5000);
-  globalShortcut.register('CommandOrControl+Shift+Space', () => broadcast('shortcut:chat-focus', {}));
+  registerAppGlobalShortcuts();
   app.on('activate', () => {
     if (!windows.get('pet')) createPetWindow();
   });
@@ -4564,6 +4723,19 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
-  if (topmostGuard) clearInterval(topmostGuard);
-  globalShortcut.unregisterAll();
+  cleanupRuntime({
+    clearTopmostGuard: () => {
+      if (topmostGuard) clearInterval(topmostGuard);
+      topmostGuard = null;
+    },
+    shortcutRegistry,
+    windows,
+    tray,
+    codexAppServer,
+    claudeChild: claudeCodingState.child,
+  });
+  tray = null;
+  claudeCodingState.child = null;
+  codingState.running = null;
+  claudeCodingState.running = null;
 });

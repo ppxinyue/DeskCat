@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  cleanTimelineMojibakeText,
   getCloudBackupPayload,
   getDeveloperAnalyticsDashboard,
   getTimelineEntries,
   insertApiConfig,
+  repairTimelineMojibakeEntries,
+  TIMELINE_MOJIBAKE_REPAIR_KEY,
   recordTelemetryEvent,
   setSetting,
   upsertTimelineEntry,
@@ -112,6 +115,48 @@ test('classifies common macOS and Windows app aliases', async () => {
   for (const item of cases) {
     assert.equal(categories.get(item.appName), item.expected, item.appName);
   }
+});
+
+test('timeline mojibake cleaner removes replacement characters without touching normal text', () => {
+  assert.equal(cleanTimelineMojibakeText('DeskCat Analytics ���� 2 ��x�� - ��� - Microsoft Edge'), 'DeskCat Analytics 2 x - - Microsoft Edge');
+  assert.equal(cleanTimelineMojibakeText('正常中文窗口 - Visual Studio Code'), '正常中文窗口 - Visual Studio Code');
+});
+
+test('timeline writes and repairs mojibake in stored entries and markers', async () => {
+  storage.clear();
+
+  const entry = await upsertTimelineEntry({
+    startedAt: new Date('2026-05-10T15:00:00.000Z').getTime(),
+    endedAt: new Date('2026-05-10T15:05:00.000Z').getTime(),
+    appName: 'msedge',
+    windowTitle: 'DeskCat Analytics ���� 2 ��x�� - ��� - Microsoft Edge',
+    backgroundMarkers: [
+      {
+        type: 'foreground-short',
+        name: 'SnippingTool',
+        detail: '��c���-���',
+        startedAt: '2026-05-10T15:02:00.000Z',
+        endedAt: '2026-05-10T15:03:00.000Z',
+      },
+    ],
+  });
+
+  assert.equal(entry?.windowTitle.includes('�'), false);
+  assert.equal(entry?.backgroundMarkers[0].detail, 'c-');
+
+  const raw = JSON.parse(storage.getItem('deskcat:electron-db:v1') || '{}');
+  raw.timelineEntries[0].windowTitle = 'FlyingBird����';
+  raw.timelineEntries[0].backgroundMarkers[0].detail = 'DeskCat Analytics ��旧��';
+  storage.setItem('deskcat:electron-db:v1', JSON.stringify(raw));
+  storage.setItem(TIMELINE_MOJIBAKE_REPAIR_KEY, '');
+
+  const result = await repairTimelineMojibakeEntries({ force: true });
+  const entries = await getTimelineEntries('2026-05-10');
+
+  assert.deepEqual(result, { scanned: 1, repaired: 1 });
+  assert.equal(entries[0].windowTitle, 'FlyingBird');
+  assert.equal(entries[0].backgroundMarkers[0].detail, 'DeskCat Analytics 旧');
+  assert.equal(storage.getItem(TIMELINE_MOJIBAKE_REPAIR_KEY), 'done');
 });
 
 test('cloud backup payload redacts provider and settings secrets', async () => {

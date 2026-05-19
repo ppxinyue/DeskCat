@@ -8,8 +8,8 @@ This is a developer-only data path. It must not appear in the user profile or us
 2. Apply `supabase/migrations/202605110001_cloud_analytics.sql` and newer migrations.
 3. Deploy `supabase/functions/deskcat-sync`.
 4. Set the Edge Function secret `DESKCAT_INGEST_TOKEN` for private alpha builds.
-5. Store the function URL in local setting `cloudSyncEndpoint`.
-6. Store the same private alpha token in local setting `cloudSyncIngestToken`.
+5. The client includes the production `deskcat-sync` URL by default. Override it with `VITE_CLOUD_SYNC_ENDPOINT` or local setting `cloudSyncEndpoint` only for staging/private deployments.
+6. The alpha client includes the production ingest token by default. Keep the Supabase `DESKCAT_INGEST_TOKEN` secret in sync with the client default, or override it with `VITE_CLOUD_SYNC_INGEST_TOKEN` / local setting `cloudSyncIngestToken` for staging/private deployments.
 7. Trigger `syncCloudBackup()` on app start, periodically, and before app shutdown.
 
 The deployed endpoint will look like:
@@ -37,7 +37,7 @@ supabase functions deploy deskcat-sync --no-verify-jwt
 - API keys and keychain references are scrubbed before a backup snapshot is created.
 - Settings keys containing `apiKey`, `token`, `secret`, or `password` are scrubbed before a backup snapshot is created.
 - Telemetry is stored as append-only local events and uploaded with the next cloud sync.
-- Cloud upload is disabled until `cloudSyncEndpoint` is configured in settings storage.
+- Cloud upload uses the production `deskcat-sync` endpoint by default. Setting `cloudSyncEndpoint` to an empty value disables upload for local testing.
 
 ## Client API
 

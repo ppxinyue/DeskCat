@@ -8,6 +8,7 @@ import {
   getPetFrameSources,
   getRandomFrameSwitchDelay,
   getBuiltinAssetUrl,
+  getFallbackBuiltinGifAssetSource,
   isGifAsset,
   isBuiltinAsset,
 } from './animations';
@@ -41,6 +42,10 @@ const MENU_HEIGHT = 306;
 const SUBMENU_WIDTH = 190;
 const MENU_MARGIN = 8;
 const MENU_LEFT_SIDE_THRESHOLD = 0.62;
+
+function isWindowsRuntime(platform = navigator.platform, userAgent = navigator.userAgent): boolean {
+  return /win/i.test(`${platform || ''} ${userAgent || ''}`);
+}
 
 function pickNextMotion(motions: PetMotionSettings, current: PetMotionName | null): PetMotionName | null {
   const enabled = MOTION_NAMES.filter((name) => motions[name]?.enabled);
@@ -82,7 +87,7 @@ export function PetAvatar({
   onDragStart?: (point: { screenX: number; screenY: number }) => void;
   onDragMove?: (point: { screenX: number; screenY: number }) => void;
   onDragEnd?: () => void;
-  onMenuOpenChange?: (open: boolean, side?: 'left' | 'right') => void;
+  onMenuOpenChange?: (open: boolean, side?: 'left' | 'right') => void | Promise<void>;
   onFocusToggle?: () => void;
   codingModeEnabled?: boolean;
   codingProvider?: CodingProvider;
@@ -335,7 +340,11 @@ export function PetAvatar({
 
   const handleContextMenuOpen = (e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     didDrag.current = true;
+    setMenuOpen(false);
+    setActiveSubmenu(null);
+    setLockedSubmenu(null);
     const clientX = e.clientX;
     const clientY = e.clientY;
     const windowWidth = window.innerWidth;
@@ -343,8 +352,8 @@ export function PetAvatar({
     const shouldOpenLeft = petRect
       ? petRect.right + MENU_WIDTH + SUBMENU_WIDTH + MENU_MARGIN * 2 > windowWidth || petRect.left > windowWidth * MENU_LEFT_SIDE_THRESHOLD
       : clientX + MENU_WIDTH + SUBMENU_WIDTH + MENU_MARGIN * 2 > windowWidth || clientX > windowWidth * MENU_LEFT_SIDE_THRESHOLD;
-    onMenuOpenChange?.(true, shouldOpenLeft ? 'left' : 'right');
-    window.setTimeout(() => {
+    const layoutReady = Promise.resolve(onMenuOpenChange?.(true, shouldOpenLeft ? 'left' : 'right'));
+    const openMenu = () => {
       const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
       const petRect = petRootRef.current?.getBoundingClientRect();
@@ -368,7 +377,15 @@ export function PetAvatar({
       setActiveSubmenu(null);
       setLockedSubmenu(null);
       setMenuOpen(true);
-    }, 40);
+    };
+    if (isWindowsRuntime()) {
+      layoutReady
+        .then(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()))))
+        .then(openMenu)
+        .catch(openMenu);
+    } else {
+      window.setTimeout(openMenu, 40);
+    }
     getConversations()
       .then((convos) => setRecentConversations(
         convos
@@ -414,6 +431,15 @@ export function PetAvatar({
 
   useEffect(() => {
     setImgError(false);
+  }, [resolvedSrc]);
+
+  const handleMediaLoadError = useCallback(() => {
+    const fallbackSrc = getFallbackBuiltinGifAssetSource(resolvedSrc);
+    if (fallbackSrc && fallbackSrc !== resolvedSrc) {
+      setResolvedSrc(fallbackSrc);
+      return;
+    }
+    setImgError(true);
   }, [resolvedSrc]);
 
   useEffect(() => {
@@ -485,7 +511,7 @@ export function PetAvatar({
       ctx.restore();
     };
     image.onerror = () => {
-      if (!cancelled) setImgError(true);
+      if (!cancelled) handleMediaLoadError();
     };
     image.src = resolvedSrc;
 
@@ -493,7 +519,7 @@ export function PetAvatar({
       cancelled = true;
       clearCanvas();
     };
-  }, [h, kind, opacity, resolvedSrc, w]);
+  }, [h, handleMediaLoadError, kind, opacity, resolvedSrc, w]);
 
   const interactiveProps = {
     onPointerDown: handlePointerDown,
@@ -718,7 +744,7 @@ export function PetAvatar({
         {kind === 'video' ? (
           <video ref={videoRef} key={resolvedSrc} src={resolvedSrc} autoPlay={!animationsPaused} loop={!animationsPaused} muted playsInline draggable={false} width={w} height={h}
             style={{ width: w, height: h, objectFit: 'contain', opacity, display: 'block', pointerEvents: 'none', ...motionStyle }}
-            onError={() => setImgError(true)} />
+            onError={handleMediaLoadError} />
         ) : kind === 'gif' ? (
           <img
             key={resolvedSrc}
@@ -736,7 +762,7 @@ export function PetAvatar({
               pointerEvents: 'none',
               ...motionStyle,
             }}
-            onError={() => setImgError(true)}
+            onError={handleMediaLoadError}
           />
         ) : (
           <canvas

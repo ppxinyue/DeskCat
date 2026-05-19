@@ -12,9 +12,10 @@ import { COMPACT_CHAT_PENDING_IMAGE_KEY, serializeDroppedChatImage } from "@/fea
 import { firstDraggedImageFile, hasDraggedFileItems, hasDraggedImageItems } from "@/features/chat/dragImageFiles";
 import { usePetStore } from "@/features/pet/petStore";
 import { useSettingsStore, type AppSettings, type CodingProvider } from "@/features/settings/settingsStore";
-import { createConversation, getConversations, getMessages, getSetting, insertMessage, recordCodingModeTime, recordDistraction, recordFocusSession, upsertTimelineEntry } from "@/lib/db";
+import { createConversation, getConversations, getMessages, getSetting, insertMessage, recordCodingModeTime, recordDistraction, recordFocusSession, repairTimelineMojibakeEntries, upsertTimelineEntry } from "@/lib/db";
 import { flushCloudSync, startCloudSyncScheduler } from "@/lib/cloudSyncScheduler";
 import { getThemeClassAction, shouldDeferWindowContent } from "@/lib/startupTheme";
+import { shouldRequestAccessibilityPermission, shouldWaitForExistingAccessibilityPermission, supportsForegroundActivityPlatform } from "@/lib/platformSupport";
 import { createFeatureTimer, trackFeatureUse } from "@/lib/telemetry";
 import { TimelineRecorder, type TimelineRecorderState, type TimelineSnapshot } from "@/lib/timelineRecorder";
 import { installDocumentTranslator } from "@/i18n";
@@ -62,6 +63,10 @@ const LIVE_STATS_INTERVAL_MS = 60_000;
 const PET_PRESENCE_CHECK_INTERVAL_MS = 3000;
 const SYSTEM_ACTIVITY_POLL_INTERVAL_MS = 15_000;
 const SYSTEM_INACTIVE_THRESHOLD_MS = 60_000;
+
+function isWindowsRuntime(platform = navigator.platform, userAgent = navigator.userAgent): boolean {
+  return /win/i.test(`${platform || ''} ${userAgent || ''}`);
+}
 
 function WindowLoadingFallback() {
   return <div className="h-screen w-screen bg-background" style={{ background: 'var(--initial-window-bg, var(--color-background))' }} />;
@@ -194,6 +199,10 @@ function App() {
       document.title = "";
       document.body.classList.add("has-background");
     }
+
+    if (label === "pet" && isWindowsRuntime()) {
+      repairTimelineMojibakeEntries().catch(() => {});
+    }
   }, []);
 
   useLayoutEffect(() => {
@@ -215,6 +224,11 @@ function App() {
     if (!loaded) return;
     return installDocumentTranslator(settings.appLanguage);
   }, [loaded, settings.appLanguage]);
+
+  useEffect(() => {
+    if (!loaded || windowLabel !== 'pet') return;
+    invoke('register_global_shortcuts', { globalShortcut: settings.globalShortcut }).catch(() => {});
+  }, [loaded, settings.globalShortcut, windowLabel]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -356,8 +370,6 @@ function App() {
       </TooltipProvider>
     );
   }
-
-  if (windowLabel === "pet" && !loaded) return null;
 
   return <PetWindow />;
 }
@@ -1583,6 +1595,16 @@ function PetWindow() {
     }
   }, [applyLayoutState, petImageWidth, petImageHeight, toolRowWidth, collapsedWidth, collapsedHeight, contextMenuLayout]);
 
+  useEffect(() => {
+    requestLayout().catch(() => {});
+    const unlisten = listen("pet:request-initial-layout", () => {
+      requestLayout().catch(() => {});
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [requestLayout]);
+
   const positionCompactChatWindow = useCallback(async ({
     show,
     windowLeft,
@@ -2187,7 +2209,7 @@ function PetWindow() {
 
   useEffect(() => {
     if (!focusEndAt || !settings.distractionDetectionEnabled) return;
-    if (typeof navigator !== 'undefined' && navigator.platform && !navigator.platform.toLowerCase().includes('mac')) return;
+    if (!supportsForegroundActivityPlatform(navigator.platform, navigator.userAgent)) return;
     let disposed = false;
     const runCheck = async () => {
       if (disposed || !focusEndAtRef.current) return;
@@ -2245,7 +2267,7 @@ function PetWindow() {
       timelineDebugLog({ stage: 'disabled', message: 'Timeline recording is off' });
       return;
     }
-    if (typeof navigator !== 'undefined' && navigator.platform && !navigator.platform.toLowerCase().includes('mac')) {
+    if (!supportsForegroundActivityPlatform(navigator.platform, navigator.userAgent)) {
       timelineDebugLog({ stage: 'unsupported', message: `platform=${navigator.platform}` });
       return;
     }
@@ -2310,12 +2332,11 @@ function PetWindow() {
           accessibilityChecked = true;
           const existingPermission = await invoke<{ supported: boolean; trusted: boolean }>('check_accessibility_permission').catch(() => null);
           let permission = existingPermission;
-          if (!existingPermission?.trusted) {
-            const requestedBefore = localStorage.getItem(ACCESSIBILITY_PERMISSION_REQUESTED_KEY) === '1';
-            if (requestedBefore) {
-              timelineDebugLog({ stage: 'accessibility:pending', message: 'Accessibility permission not granted; skipping repeated prompt' });
-              return;
-            }
+          if (shouldWaitForExistingAccessibilityPermission(existingPermission, localStorage.getItem(ACCESSIBILITY_PERMISSION_REQUESTED_KEY) === '1')) {
+            timelineDebugLog({ stage: 'accessibility:pending', message: 'Accessibility permission not granted; skipping repeated prompt' });
+            return;
+          }
+          if (shouldRequestAccessibilityPermission(existingPermission, localStorage.getItem(ACCESSIBILITY_PERMISSION_REQUESTED_KEY) === '1')) {
             localStorage.setItem(ACCESSIBILITY_PERMISSION_REQUESTED_KEY, '1');
             permission = await invoke<{ supported: boolean; trusted: boolean }>('ensure_accessibility_permission').catch((error) => {
               timelineDebugLog({ stage: 'accessibility:error', error: error instanceof Error ? error.message : String(error) });
@@ -2395,7 +2416,7 @@ function PetWindow() {
   }, [settings.timelineRecordingEnabled, settings.timelineMinSegmentMinutes, settings.musicAppKeywords, triggerDistractionWarning]);
 
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.platform && !navigator.platform.toLowerCase().includes('mac')) return;
+    if (!supportsForegroundActivityPlatform(navigator.platform, navigator.userAgent)) return;
     let disposed = false;
 
     const runPresenceCheck = async () => {
@@ -2610,8 +2631,7 @@ function PetWindow() {
     setContextMenuLayout(nextLayout);
     invoke("set_pet_context_menu_open", { open: next }).catch(() => {});
     if (next) {
-      requestLayout({ contextMenuOpen: true, contextMenuLayout: nextLayout }).catch(() => {});
-      return;
+      return requestLayout({ contextMenuOpen: true, contextMenuLayout: nextLayout });
     }
     contextMenuRestoreTimerRef.current = window.setTimeout(() => {
       contextMenuRestoreTimerRef.current = null;
@@ -3251,7 +3271,9 @@ async function getCompactChatGeometry({
     MIN_DIALOG_WIDTH,
     Math.max(MIN_DIALOG_WIDTH, safeWidth - COMPACT_CHAT_SIDE_CHROME * 2),
   );
-  const outerWidth = Math.min(safeWidth, contentWidth + COMPACT_CHAT_SIDE_CHROME * 2);
+  const outerWidth = isWindowsRuntime()
+    ? clamp(requestedDialogWidth, MIN_DIALOG_WIDTH, safeWidth)
+    : Math.min(safeWidth, contentWidth + COMPACT_CHAT_SIDE_CHROME * 2);
   const outerChromeY = COMPACT_CHAT_TOP_CHROME + COMPACT_CHAT_BOTTOM_CHROME;
   const preferredContentHeight = compact ? 128 : COMPACT_CHAT_PREFERRED_HEIGHT;
   const preferredOuterHeight = preferredContentHeight + outerChromeY;
