@@ -36,6 +36,7 @@ const {
 } = require('./codingStatus.cjs');
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
 const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
+const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
 const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
 const { applyDefaultLaunchAtLogin, readLaunchAtLogin, setLaunchAtLogin } = require('./loginItems.cjs');
 const {
@@ -356,40 +357,31 @@ function applyFloatingFullscreenBehavior(win, options = {}) {
   const force = Boolean(options.force);
   const isCompactChat = win === windows.get('compact-chat');
   const isPet = win === windows.get('pet');
+  const windowRole = isCompactChat ? 'compact-chat' : isPet ? 'pet' : 'generic';
   if (isCompactChat) {
     debugCompactChat('apply floating requested', { force, snapshot: compactChatWindowSnapshot(win) });
   }
   if (topmostSuppressed) {
-    win.setAlwaysOnTop(false);
+    applyTopmostPolicy(win, resolveTopmostPolicy({ suppressed: true }));
     if (isCompactChat) debugCompactChat('apply floating suppressed', { snapshot: compactChatWindowSnapshot(win) });
     return;
   }
-  if (process.platform === 'darwin') {
-    if (!force && floatingConfiguredWindows.has(win) && win.isAlwaysOnTop()) return;
-    if (app.dock) app.dock.show();
-    win.setSkipTaskbar(false);
-    win.setVisibleOnAllWorkspaces(true, {
-      visibleOnFullScreen: true,
-      skipTransformProcessType: true,
-    });
-    win.setFullScreenable(false);
-    if (isCompactChat) {
-      win.setAlwaysOnTop(true, 'floating', 0);
-    } else {
-      const relativeLevel = isPet && petContextMenuOpen ? 2 : 1;
-      win.setAlwaysOnTop(true, 'screen-saver', relativeLevel);
-    }
-    floatingConfiguredWindows.add(win);
-    if (force) win.moveTop();
-    if (isCompactChat) debugCompactChat('apply floating darwin done', { force, snapshot: compactChatWindowSnapshot(win) });
-  } else {
-    if (!force && !isCompactChat && floatingConfiguredWindows.has(win) && win.isAlwaysOnTop()) return;
-    const level = isCompactChat ? 'screen-saver' : 'normal';
-    win.setAlwaysOnTop(true, level);
-    win.setSkipTaskbar(true);
-    floatingConfiguredWindows.add(win);
-    if (isCompactChat) debugCompactChat('apply floating non-darwin done', { level, force, snapshot: compactChatWindowSnapshot(win) });
-  }
+  if (shouldSkipTopmostApply({
+    platform: process.platform,
+    force,
+    isCompactChat,
+    alreadyConfigured: floatingConfiguredWindows.has(win),
+    alwaysOnTop: win.isAlwaysOnTop(),
+  })) return;
+  const policy = resolveTopmostPolicy({
+    platform: process.platform,
+    windowRole,
+    force,
+    petContextMenuOpen,
+  });
+  applyTopmostPolicy(win, policy, { dock: app.dock });
+  floatingConfiguredWindows.add(win);
+  if (isCompactChat) debugCompactChat('apply floating done', { policy, force, snapshot: compactChatWindowSnapshot(win) });
 }
 
 function makeSquareIcon(iconPath, size = 512) {
