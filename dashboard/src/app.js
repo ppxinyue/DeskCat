@@ -19,6 +19,8 @@ const reachSummaryEl = document.querySelector('#reach-summary');
 const eventTableEl = document.querySelector('#event-table');
 const worldMapEl = document.querySelector('#world-map');
 const mapSummaryEl = document.querySelector('#map-summary');
+const newUsersSummaryEl = document.querySelector('#new-users-summary');
+const newUsersListEl = document.querySelector('#new-users-list');
 
 const storage = {
   days: 'deskcat-dashboard:days',
@@ -63,6 +65,14 @@ function formatShortDate(value) {
   return new Date(value).toLocaleDateString('zh-CN', {
     month: 'short',
     day: 'numeric',
+  });
+}
+
+function formatTime(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -565,6 +575,54 @@ function renderEvents(data) {
   `).join('');
 }
 
+function renderNewUsersToday(data) {
+  const summary = data.newUsersToday || {};
+  const users = summary.users || [];
+  newUsersSummaryEl.textContent = `${formatNumber(summary.count || users.length)} new · ${summary.date || ''}`;
+  if (users.length === 0) {
+    newUsersListEl.innerHTML = '<div class="empty">No new users today.</div>';
+    return;
+  }
+
+  newUsersListEl.innerHTML = users.map((user) => {
+    const timeline = user.timeline || {};
+    const entries = timeline.entries || [];
+    const meta = [
+      user.platform,
+      user.appVersion,
+      user.location,
+      user.ip,
+    ].filter(Boolean).map(escapeHtml).join(' · ');
+    return `
+      <article class="new-user-card">
+        <div class="new-user-head">
+          <div>
+            <h3 title="${escapeHtml(user.deviceId)}">${shortDeviceId(user.deviceId)}</h3>
+            <p>${meta || 'No client metadata yet'}</p>
+          </div>
+          <div class="new-user-time">
+            <strong>${formatTime(user.firstSeenAt)}</strong>
+            <span>first seen</span>
+          </div>
+        </div>
+        <div class="new-user-stats">
+          <span>${formatNumber(timeline.eventCount)} timeline events</span>
+          <span>${formatDuration(timeline.durationMs)}</span>
+          <span>${timeline.firstEventAt ? `${formatTime(timeline.firstEventAt)}-${formatTime(timeline.lastEventAt)}` : 'No timeline today'}</span>
+        </div>
+        <div class="timeline-mini">
+          ${entries.length ? entries.map((entry) => `
+            <div class="timeline-mini-row">
+              <span>${formatTime(entry.clientCreatedAt)}</span>
+              <strong>${formatDuration(entry.durationMs)}</strong>
+            </div>
+          `).join('') : '<div class="empty small">No timeline entries yet.</div>'}
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
 function render(data) {
   renderMetrics(data);
   renderDaily(data);
@@ -576,6 +634,7 @@ function render(data) {
   renderDownloads(data);
   renderReach(data);
   renderEvents(data);
+  renderNewUsersToday(data);
   renderWorldMap(data);
   generatedAtEl.textContent = `Generated ${formatDate(data.generatedAt)}`;
 }

@@ -117,6 +117,13 @@ type UserBuilder = {
   recentEvents: RecentEvent[];
 };
 
+type TodayBounds = {
+  date: string;
+  startIso: string;
+  endIso: string;
+  timezone: string;
+};
+
 const countryCentroids: Record<string, { lat: number; lon: number; name: string }> = {
   AU: { lat: -25.3, lon: 133.8, name: 'Australia' },
   BR: { lat: -14.2, lon: -51.9, name: 'Brazil' },
@@ -221,6 +228,24 @@ function daysAgoDate(days: number) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - Math.max(0, days - 1));
   return date.toISOString().slice(0, 10);
+}
+
+function getShanghaiTodayBounds(): TodayBounds {
+  const timezone = 'Asia/Shanghai';
+  const date = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const start = new Date(`${date}T00:00:00+08:00`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  return {
+    date,
+    startIso: start.toISOString(),
+    endIso: end.toISOString(),
+    timezone,
+  };
 }
 
 function addUtcDays(dateText: string, days: number) {
@@ -537,6 +562,18 @@ function appVersionFromMetadata(metadata: Record<string, unknown> | null) {
   return parseDeskCatVersion(readString(root.userAgent) || readString(deviceInfo.userAgent));
 }
 
+function formatMetadataLocation(metadata: Record<string, unknown> | null) {
+  const root = readObject(metadata);
+  const geo = readObject(root.geo);
+  const deviceInfo = readObject(root.deviceInfo);
+  const location = [
+    readString(geo.city),
+    readString(geo.region),
+    readString(geo.country),
+  ].filter(Boolean).join(', ');
+  return location || readString(geo.timezone) || readString(deviceInfo.timezone);
+}
+
 function countryFromTimezone(timezone: string | null) {
   if (!timezone) return null;
   if (timezone === 'Asia/Shanghai') return 'CN';
@@ -607,6 +644,61 @@ function buildUserLocations(devices: DeviceMetric[]) {
       ips: Array.from(location.ips).slice(0, 8),
     }))
     .sort((a, b) => b.users - a.users || String(a.label).localeCompare(String(b.label)));
+}
+
+function buildNewUsersToday(devices: DeviceMetric[], timelineRows: RecentEvent[], today: TodayBounds) {
+  const start = new Date(today.startIso).getTime();
+  const end = new Date(today.endIso).getTime();
+  const timelineByDevice = new Map<string, RecentEvent[]>();
+  for (const row of timelineRows) {
+    const rows = timelineByDevice.get(row.device_id) ?? [];
+    rows.push(row);
+    timelineByDevice.set(row.device_id, rows);
+  }
+
+  const users = devices
+    .filter((device) => {
+      const firstSeen = new Date(device.first_seen_at).getTime();
+      return Number.isFinite(firstSeen) && firstSeen >= start && firstSeen < end;
+    })
+    .sort((a, b) => String(b.first_seen_at).localeCompare(String(a.first_seen_at)))
+    .map((device) => {
+      const metadata = device.metadata ?? null;
+      const root = readObject(metadata);
+      const deviceTimelineRows = (timelineByDevice.get(device.device_id) ?? [])
+        .sort((a, b) => String(b.client_created_at).localeCompare(String(a.client_created_at)));
+      const durationMs = deviceTimelineRows.reduce((total, row) => total + Number(row.duration_ms ?? 0), 0);
+      const useCount = deviceTimelineRows.reduce((total, row) => total + Number(row.count ?? 0), 0);
+      return {
+        deviceId: device.device_id,
+        firstSeenAt: device.first_seen_at,
+        lastSeenAt: device.last_seen_at,
+        platform: device.platform,
+        appVersion: device.app_version || appVersionFromMetadata(metadata),
+        ip: readString(root.ip),
+        location: formatMetadataLocation(metadata),
+        timeline: {
+          eventCount: deviceTimelineRows.length,
+          useCount,
+          durationMs,
+          firstEventAt: deviceTimelineRows.at(-1)?.client_created_at ?? null,
+          lastEventAt: deviceTimelineRows[0]?.client_created_at ?? null,
+          entries: deviceTimelineRows.slice(0, 8).map((row) => ({
+            eventName: row.event_name,
+            count: Number(row.count ?? 0),
+            durationMs: Number(row.duration_ms ?? 0),
+            clientCreatedAt: row.client_created_at,
+          })),
+        },
+      };
+    });
+
+  return {
+    date: today.date,
+    timezone: today.timezone,
+    count: users.length,
+    users,
+  };
 }
 
 function buildUsers(
@@ -956,6 +1048,7 @@ Deno.serve(async (req) => {
     const supabase = getSupabaseAdmin();
     const days = parseDays(req);
     const startDate = daysAgoDate(days);
+    const today = getShanghaiTodayBounds();
 
     const [
       devices,
@@ -973,6 +1066,7 @@ Deno.serve(async (req) => {
       pageViewsTotal,
       publicStats,
       recent,
+      todayTimeline,
     ] = await Promise.all([
       supabase.from('devices').select('device_id,platform,app_version,first_seen_at,last_seen_at,metadata', { count: 'exact' }).order('last_seen_at', { ascending: false }),
       supabase.from('cloud_backups').select('id', { count: 'exact', head: true }),
@@ -993,6 +1087,13 @@ Deno.serve(async (req) => {
         .gte('received_at', `${startDate}T00:00:00.000Z`)
         .order('received_at', { ascending: false })
         .limit(1000),
+      supabase.from('telemetry_events')
+        .select('device_id,event_name,feature,count,duration_ms,client_created_at,received_at')
+        .eq('feature', 'timeline')
+        .gte('client_created_at', today.startIso)
+        .lt('client_created_at', today.endIso)
+        .order('client_created_at', { ascending: false })
+        .limit(2000),
     ]);
 
     for (const result of [
@@ -1010,6 +1111,7 @@ Deno.serve(async (req) => {
       pageViews,
       pageViewsTotal,
       recent,
+      todayTimeline,
     ]) {
       if (result.error) throw result.error;
     }
@@ -1076,6 +1178,11 @@ Deno.serve(async (req) => {
       featureDailyUsers: aggregateFeatureUsers(featureUserRows).slice(0, 80),
       dailyUserUsage: aggregateDeviceUsage(deviceUsageRows).slice(0, 200),
       dailyUserUsageByDay: aggregateDailyUsageByDay(deviceUsageRows),
+      newUsersToday: buildNewUsersToday(
+        deviceRows,
+        (todayTimeline.data ?? []) as RecentEvent[],
+        today,
+      ),
       userLocations: buildUserLocations(deviceRows),
       users: buildUsers(
         deviceRows,

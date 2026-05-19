@@ -165,6 +165,79 @@ button {
   min-height: 460px;
 }
 
+.new-users-list {
+  display: grid;
+  gap: 12px;
+}
+
+.new-user-card {
+  border: 1px solid #e6e8eb;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.new-user-head {
+  align-items: start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.new-user-head h3 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.new-user-head p {
+  color: #687076;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+
+.new-user-time {
+  display: grid;
+  justify-items: end;
+  white-space: nowrap;
+}
+
+.new-user-time strong {
+  font-size: 18px;
+}
+
+.new-user-time span,
+.new-user-stats,
+.timeline-mini-row span {
+  color: #687076;
+  font-size: 12px;
+}
+
+.new-user-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.timeline-mini {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.timeline-mini-row {
+  align-items: center;
+  background: #f8f9fa;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 9px;
+}
+
+.empty.small {
+  padding: 6px 0;
+}
+
 .panel-header {
   align-items: center;
   display: flex;
