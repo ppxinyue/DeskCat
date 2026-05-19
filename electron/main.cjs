@@ -39,7 +39,13 @@ const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostic
 const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
 const { bundledIconCandidates, shouldHideApplicationMenu, shouldUseNativeWindowsIcon } = require('./appIcons.cjs');
 const { decodeDeskcatFileUrl } = require('./fileUrls.cjs');
-const { cleanupRuntime, shouldSkipUpdateCheck, updateCheckMethod } = require('./appRuntime.cjs');
+const {
+  cleanupRuntime,
+  configureSingleInstanceLock,
+  shouldRecoverPetWindow,
+  shouldSkipUpdateCheck,
+  updateCheckMethod,
+} = require('./appRuntime.cjs');
 const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
 const { applyDefaultLaunchAtLogin, readLaunchAtLogin, setLaunchAtLogin } = require('./loginItems.cjs');
 const {
@@ -75,6 +81,7 @@ const updaterState = {
   lastError: '',
   lastCheckAt: 0,
 };
+let singleInstanceLock = { locked: true, registered: false };
 let topmostGuard = null;
 let topmostSuppressed = false;
 let compactChatHiddenUntil = 0;
@@ -1368,6 +1375,21 @@ function showPetWindow() {
     applyTopmost: (target) => applyFloatingFullscreenBehavior(target, { force: true }),
     fallbackShowMs: process.platform === 'win32' ? 2500 : 0,
   });
+}
+
+function recoverPetWindowIfNeeded() {
+  const win = windows.get('pet');
+  if (!shouldRecoverPetWindow({
+    platform: process.platform,
+    hasWindow: Boolean(win),
+    destroyed: Boolean(win?.isDestroyed?.()),
+    visible: Boolean(win?.isVisible?.()),
+  })) {
+    return false;
+  }
+  showPetWindow();
+  updateTrayMenu();
+  return true;
 }
 
 function hidePetWindow() {
@@ -4601,6 +4623,14 @@ function normalizeDocumentText(text) {
 ipcMain.handle('deskcat:pick-chat-image', async (event) => pickChatAttachment(event));
 ipcMain.handle('deskcat:pick-chat-attachment', async (event) => pickChatAttachment(event));
 
+singleInstanceLock = configureSingleInstanceLock(app, {
+  onSecondInstance: () => {
+    recoverPetWindowIfNeeded();
+    const win = windows.get('pet');
+    if (win && !win.isDestroyed?.()) applyFloatingFullscreenBehavior(win, { force: true });
+  },
+});
+
 function registerProtocols() {
   protocol.handle('deskcat-app', async (request) => {
     const url = new URL(request.url);
@@ -4619,11 +4649,13 @@ function registerProtocols() {
 }
 
 app.whenReady().then(() => {
+  if (!singleInstanceLock.locked) return;
   registerProtocols();
   secureKeyStore = createSecureKeyStore({ userDataPath: app.getPath('userData'), safeStorage });
   applyDefaultLaunchAtLogin(app);
   setAppIcon(resolveBundledAppIconPath());
   showPetWindow();
+  if (process.platform === 'win32') setTimeout(() => recoverPetWindowIfNeeded(), 3500);
   ensureTopmostGuard();
   setTimeout(() => {
     checkForAppUpdates().catch((error) => {

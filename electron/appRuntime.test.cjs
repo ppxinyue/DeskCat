@@ -3,9 +3,11 @@ const test = require('node:test');
 
 const {
   cleanupRuntime,
+  configureSingleInstanceLock,
   destroyTray,
   destroyWindows,
   shouldSkipUpdateCheck,
+  shouldRecoverPetWindow,
   terminateChildProcess,
   updateCheckMethod,
 } = require('./appRuntime.cjs');
@@ -28,6 +30,46 @@ test('update checks are skipped only in development or unpackaged runtime', () =
 test('automatic update checks avoid OS notifications while manual checks may notify', () => {
   assert.equal(updateCheckMethod({ manual: false }), 'checkForUpdates');
   assert.equal(updateCheckMethod({ manual: true }), 'checkForUpdatesAndNotify');
+});
+
+test('single instance lock quits duplicate app processes', () => {
+  const calls = [];
+  const app = {
+    requestSingleInstanceLock: () => false,
+    quit: () => calls.push('quit'),
+    on: () => calls.push('on'),
+  };
+
+  assert.deepEqual(configureSingleInstanceLock(app), { locked: false, registered: false });
+  assert.deepEqual(calls, ['quit']);
+});
+
+test('single instance lock restores the pet window for later launches', () => {
+  const calls = [];
+  let handler = null;
+  const app = {
+    requestSingleInstanceLock: () => true,
+    isReady: () => true,
+    on: (event, fn) => {
+      calls.push(event);
+      handler = fn;
+    },
+  };
+
+  assert.deepEqual(configureSingleInstanceLock(app, { onSecondInstance: () => calls.push('show-pet') }), {
+    locked: true,
+    registered: true,
+  });
+  handler();
+  assert.deepEqual(calls, ['second-instance', 'show-pet']);
+});
+
+test('Windows startup recovers a missing or hidden pet window', () => {
+  assert.equal(shouldRecoverPetWindow({ platform: 'win32', hasWindow: false }), true);
+  assert.equal(shouldRecoverPetWindow({ platform: 'win32', hasWindow: true, destroyed: true }), true);
+  assert.equal(shouldRecoverPetWindow({ platform: 'win32', hasWindow: true, visible: false }), true);
+  assert.equal(shouldRecoverPetWindow({ platform: 'win32', hasWindow: true, visible: true }), false);
+  assert.equal(shouldRecoverPetWindow({ platform: 'darwin', hasWindow: false }), false);
 });
 
 test('destroyWindows destroys only live windows', () => {

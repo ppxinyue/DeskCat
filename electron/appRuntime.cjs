@@ -11,6 +11,28 @@ function updateCheckMethod({ manual = false } = {}) {
   return manual ? 'checkForUpdatesAndNotify' : 'checkForUpdates';
 }
 
+function configureSingleInstanceLock(app, { onSecondInstance } = {}) {
+  const requestLock = app?.requestSingleInstanceLock;
+  if (typeof requestLock !== 'function') return { locked: true, registered: false };
+
+  const locked = requestLock.call(app);
+  if (!locked) {
+    app?.quit?.();
+    return { locked: false, registered: false };
+  }
+
+  app?.on?.('second-instance', () => {
+    if (typeof app.isReady === 'function' && !app.isReady()) return;
+    onSecondInstance?.();
+  });
+  return { locked: true, registered: true };
+}
+
+function shouldRecoverPetWindow({ platform = process.platform, hasWindow = false, destroyed = false, visible = false } = {}) {
+  if (platform !== 'win32') return false;
+  return !hasWindow || destroyed || !visible;
+}
+
 function destroyTray(tray) {
   if (!tray) return false;
   try {
@@ -74,9 +96,11 @@ function cleanupRuntime({
 
 module.exports = {
   cleanupRuntime,
+  configureSingleInstanceLock,
   destroyTray,
   destroyWindows,
   shouldSkipUpdateCheck,
+  shouldRecoverPetWindow,
   terminateChildProcess,
   updateCheckMethod,
 };
