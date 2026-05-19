@@ -40,6 +40,7 @@ const SCREEN_MARGIN = 16;
 const PET_CONTENT_MARGIN = 20;
 const MIN_DIALOG_WIDTH = 200;
 const MIN_DIALOG_HEIGHT = 90;
+const COMPACT_CHAT_SIDE_CHROME = 10;
 const COMPACT_CHAT_TOP_CHROME = 20;
 const COMPACT_CHAT_BOTTOM_CHROME = 10;
 const COMPACT_CHAT_PREFERRED_HEIGHT = 340;
@@ -62,6 +63,10 @@ const LIVE_STATS_INTERVAL_MS = 60_000;
 const PET_PRESENCE_CHECK_INTERVAL_MS = 3000;
 const SYSTEM_ACTIVITY_POLL_INTERVAL_MS = 15_000;
 const SYSTEM_INACTIVE_THRESHOLD_MS = 60_000;
+
+function isWindowsRuntime(platform = navigator.platform, userAgent = navigator.userAgent): boolean {
+  return /win/i.test(`${platform || ''} ${userAgent || ''}`);
+}
 
 function WindowLoadingFallback() {
   return <div className="h-screen w-screen bg-background" style={{ background: 'var(--initial-window-bg, var(--color-background))' }} />;
@@ -3258,11 +3263,14 @@ async function getCompactChatGeometry({
   const petY = baseWindowTop + layout.petTop;
   const safeWidth = Math.max(MIN_DIALOG_WIDTH, safeRight - safeLeft);
   const safeHeight = Math.max(MIN_DIALOG_HEIGHT, safeBottom - safeTop);
-  const outerWidth = clamp(
+  const contentWidth = clamp(
     requestedDialogWidth,
     MIN_DIALOG_WIDTH,
-    safeWidth,
+    Math.max(MIN_DIALOG_WIDTH, safeWidth - COMPACT_CHAT_SIDE_CHROME * 2),
   );
+  const outerWidth = isWindowsRuntime()
+    ? clamp(requestedDialogWidth, MIN_DIALOG_WIDTH, safeWidth)
+    : Math.min(safeWidth, contentWidth + COMPACT_CHAT_SIDE_CHROME * 2);
   const outerChromeY = COMPACT_CHAT_TOP_CHROME + COMPACT_CHAT_BOTTOM_CHROME;
   const preferredContentHeight = compact ? 128 : COMPACT_CHAT_PREFERRED_HEIGHT;
   const preferredOuterHeight = preferredContentHeight + outerChromeY;

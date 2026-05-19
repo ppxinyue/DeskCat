@@ -1554,7 +1554,11 @@ function showCompactChatWindow({ x, y, w, h, force = false }, show = true) {
       h: Math.round(h),
       snapshot: compactChatWindowSnapshot(existing),
     });
-    existing.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
+    if (process.platform === 'win32') {
+      existing.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) });
+    } else {
+      existing.setPosition(Math.round(x), Math.round(y));
+    }
     existing.setIgnoreMouseEvents(false);
     applyFloatingFullscreenBehavior(existing);
     debugCompactChat('position compact chat applied', { snapshot: compactChatWindowSnapshot(existing) });
