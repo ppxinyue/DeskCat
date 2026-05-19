@@ -250,7 +250,7 @@ function DonateSection() {
           <div className="space-y-4 text-[13px] leading-6 text-foreground/82">
             <p>
               这个项目目前由一个人和一只猫共同维护。
-              如果 DeskCat 让你的工作日变得稍微轻松一点，欢迎支持它继续成长。你的支持可能会：提升开发速度、修复神秘bug、以及维持基本猫粮供应。
+              如果 DeskCat 让你的工作日变得轻松了一点，欢迎投喂，让猫咪继续成长。你的投喂可能会：提升开发速度、修复神秘bug、以及维持基本猫粮供应。
             </p>
             <p className="text-muted-foreground">
               DeskCat is built by one human and one emotionally unstable cat.
@@ -262,7 +262,7 @@ function DonateSection() {
               Scan a QR code to send the cat a snack.
             </p>
             <p className="text-[12px] leading-5 text-muted-foreground">
-              不支持也没关系，小猫还是会陪你上班摸鱼。
+              不投喂也没关系，小猫还是会陪你上班摸鱼。
               <br />
               No pressure — the cat will still hang around your desktop anyway.
             </p>

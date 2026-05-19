@@ -58,6 +58,10 @@ function isIgnoredDownloadAsset(asset: string) {
   return asset.startsWith('debug-');
 }
 
+function isReleaseInstallerAsset(assetName: string) {
+  return /\.(dmg|exe|msi|pkg)$/i.test(assetName);
+}
+
 async function getGithubDownloads() {
   const repo = Deno.env.get('DESKCAT_GITHUB_REPO') || Deno.env.get('GITHUB_REPO') || 'ppxinyue/DeskCat';
   const token = Deno.env.get('GITHUB_TOKEN');
@@ -80,7 +84,7 @@ async function getGithubDownloads() {
     .filter((release) => !release.draft)
     .sort((a, b) => String(b.published_at ?? '').localeCompare(String(a.published_at ?? '')))[0];
   const releaseAssetCount = (latestRelease?.assets ?? [])
-    .filter((asset) => String(asset.name ?? '').endsWith('.dmg') && (asset.state ?? 'uploaded') === 'uploaded')
+    .filter((asset) => isReleaseInstallerAsset(String(asset.name ?? '')) && (asset.state ?? 'uploaded') === 'uploaded')
     .reduce(
       (total, asset) => total + Number(asset.download_count ?? 0),
       0,

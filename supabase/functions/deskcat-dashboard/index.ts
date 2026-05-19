@@ -8,16 +8,6 @@ type DailyMetric = {
   total_duration_ms: number;
 };
 
-type DailyFeatureMetric = {
-  metric_date: string;
-  feature: string;
-  event_name: string;
-  active_devices: number;
-  event_count: number;
-  use_count: number;
-  duration_ms: number;
-};
-
 type DailyFeatureUserMetric = {
   metric_date: string;
   feature: string;
@@ -320,67 +310,6 @@ function buildDailyTrends(
     downloads: downloadsByDate.get(row.metric_date) ?? 0,
     views: viewsByDate.get(row.metric_date) ?? 0,
   }));
-}
-
-function aggregateFeatures(rows: DailyFeatureMetric[]) {
-  const byFeature = new Map<string, {
-    feature: string;
-    eventCount: number;
-    useCount: number;
-    durationMs: number;
-    activeDevices: Set<string>;
-  }>();
-  const byEvent = new Map<string, {
-    feature: string;
-    eventName: string;
-    eventCount: number;
-    useCount: number;
-    durationMs: number;
-    activeDevices: number;
-  }>();
-
-  for (const row of rows) {
-    const feature = byFeature.get(row.feature) ?? {
-      feature: row.feature,
-      eventCount: 0,
-      useCount: 0,
-      durationMs: 0,
-      activeDevices: new Set<string>(),
-    };
-    feature.eventCount += Number(row.event_count ?? 0);
-    feature.useCount += Number(row.use_count ?? 0);
-    feature.durationMs += Number(row.duration_ms ?? 0);
-    feature.activeDevices.add(`${row.metric_date}:${row.active_devices}`);
-    byFeature.set(row.feature, feature);
-
-    const eventKey = `${row.feature}:${row.event_name}`;
-    const event = byEvent.get(eventKey) ?? {
-      feature: row.feature,
-      eventName: row.event_name,
-      eventCount: 0,
-      useCount: 0,
-      durationMs: 0,
-      activeDevices: 0,
-    };
-    event.eventCount += Number(row.event_count ?? 0);
-    event.useCount += Number(row.use_count ?? 0);
-    event.durationMs += Number(row.duration_ms ?? 0);
-    event.activeDevices = Math.max(event.activeDevices, Number(row.active_devices ?? 0));
-    byEvent.set(eventKey, event);
-  }
-
-  return {
-    features: Array.from(byFeature.values())
-      .map((item) => ({
-        feature: item.feature,
-        eventCount: item.eventCount,
-        useCount: item.useCount,
-        durationMs: item.durationMs,
-      }))
-      .sort((a, b) => b.durationMs - a.durationMs || b.useCount - a.useCount),
-    events: Array.from(byEvent.values())
-      .sort((a, b) => b.durationMs - a.durationMs || b.useCount - a.useCount),
-  };
 }
 
 function aggregateDeviceFeatures(rows: DailyDeviceFeatureMetric[]) {
@@ -928,6 +857,10 @@ function aggregateProductViews(rows: DailyPageViewMetric[]) {
   };
 }
 
+function isReleaseInstallerAsset(assetName: string) {
+  return /\.(dmg|exe|msi|pkg)$/i.test(assetName);
+}
+
 async function getGithubDownloads() {
   const repo = Deno.env.get('DESKCAT_GITHUB_REPO') || Deno.env.get('GITHUB_REPO') || 'ppxinyue/DeskCat';
   const token = Deno.env.get('GITHUB_TOKEN');
@@ -950,7 +883,7 @@ async function getGithubDownloads() {
     .filter((release) => !release.draft)
     .sort((a, b) => String(b.published_at ?? '').localeCompare(String(a.published_at ?? '')))[0];
   const assets = (latestRelease?.assets ?? [])
-    .filter((asset) => String(asset.name ?? '').endsWith('.dmg') && (asset.state ?? 'uploaded') === 'uploaded')
+    .filter((asset) => isReleaseInstallerAsset(String(asset.name ?? '')) && (asset.state ?? 'uploaded') === 'uploaded')
     .map((asset) => ({
       release: latestRelease?.tag_name ?? '',
       asset: asset.name ?? '',
@@ -1157,7 +1090,6 @@ Deno.serve(async (req) => {
 
     const dailyRows = fillDailyRows((daily.data ?? []) as DailyMetric[], startDate, days);
     const deviceRows = (devices.data ?? []) as DeviceMetric[];
-    const featureRows = (featureDaily.data ?? []) as DailyFeatureMetric[];
     const featureUserRows = (featureUsersDaily.data ?? []) as DailyFeatureUserMetric[];
     const deviceUsageRows = (deviceUsageDaily.data ?? []) as DailyDeviceUsageMetric[];
     const deviceFeatureRows = (deviceFeatureDaily.data ?? []) as DailyDeviceFeatureMetric[];

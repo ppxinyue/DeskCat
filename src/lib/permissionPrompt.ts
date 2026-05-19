@@ -43,33 +43,35 @@ export function showPermissionPrompt({
   if (typeof document === 'undefined') return Promise.resolve(true);
   if (activePrompt) return activePrompt;
 
-  activePrompt = new Promise<boolean>(async (resolve) => {
-    const displayTitle = chooseText(title, titleEn);
-    const displayFeature = chooseText(feature, featureEn);
-    const displayConfirmLabel = confirmLabel ?? chooseText('继续', 'Continue');
-    const displayCancelLabel = cancelLabel ?? chooseText('取消', 'Cancel');
-    const privacyText = chooseText(
-      '只在相关功能中读取必要信息；默认本地存储，云端备份均作加密处理。',
-      'Only needed data is read for this feature. Local by default; cloud backups are encrypted.',
-    );
-    if (window.deskCat) {
-      const accepted = await invoke<boolean>('show_permission_prompt_overlay', {
-        title: displayTitle,
-        feature: displayFeature,
-        privacy: privacyText,
-        confirmLabel: displayConfirmLabel,
-        cancelLabel: displayCancelLabel,
-        iconPath: getCurrentPetIconPath(),
-      }).catch(() => null);
-      if (typeof accepted === 'boolean') {
-        activePrompt = null;
-        resolve(accepted);
-        return;
+  activePrompt = new Promise<boolean>((resolve) => {
+    void (async () => {
+      const displayTitle = chooseText(title, titleEn);
+      const displayFeature = chooseText(feature, featureEn);
+      const displayConfirmLabel = confirmLabel ?? chooseText('继续', 'Continue');
+      const displayCancelLabel = cancelLabel ?? chooseText('取消', 'Cancel');
+      const privacyText = chooseText(
+        '只在相关功能中读取必要信息；默认本地存储，云端备份均作加密处理。',
+        'Only needed data is read for this feature. Local by default; cloud backups are encrypted.',
+      );
+      if (window.deskCat) {
+        const accepted = await invoke<boolean>('show_permission_prompt_overlay', {
+          title: displayTitle,
+          feature: displayFeature,
+          privacy: privacyText,
+          confirmLabel: displayConfirmLabel,
+          cancelLabel: displayCancelLabel,
+          iconPath: getCurrentPetIconPath(),
+        }).catch(() => null);
+        if (typeof accepted === 'boolean') {
+          activePrompt = null;
+          resolve(accepted);
+          return;
+        }
       }
-    }
 
-    activePrompt = null;
-    resolve(window.confirm(`${displayTitle}\n\n${displayFeature}\n\n${privacyText}`));
+      activePrompt = null;
+      resolve(window.confirm(`${displayTitle}\n\n${displayFeature}\n\n${privacyText}`));
+    })();
   });
 
   return activePrompt;
