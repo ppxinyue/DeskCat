@@ -38,6 +38,7 @@ const { createDeferredWindowShowController, createPetVisibilityController } = re
 const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
 const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
 const { bundledIconCandidates, shouldHideApplicationMenu, shouldUseNativeWindowsIcon } = require('./appIcons.cjs');
+const { readDeskcatAppFile } = require('./appAssets.cjs');
 const { decodeDeskcatFileUrl } = require('./fileUrls.cjs');
 const {
   cleanupRuntime,
@@ -4633,10 +4634,11 @@ singleInstanceLock = configureSingleInstanceLock(app, {
 
 function registerProtocols() {
   protocol.handle('deskcat-app', async (request) => {
-    const url = new URL(request.url);
-    const pathname = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
-    const filePath = path.join(app.getAppPath(), 'dist', pathname.replace(/^\/+/, ''));
-    return new Response(await fsp.readFile(filePath), {
+    const { filePath, bytes } = await readDeskcatAppFile({
+      appPath: app.getAppPath(),
+      requestUrl: request.url,
+    });
+    return new Response(bytes, {
       headers: { 'content-type': contentType(filePath) },
     });
   });
