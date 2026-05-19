@@ -4506,7 +4506,17 @@ const handlers = {
       Number.isFinite(Number(compact.x)) &&
       Number.isFinite(Number(compact.y))
     ) {
-      compactWin.setPosition(Math.round(Number(compact.x)), Math.round(Number(compact.y)));
+      if (process.platform === 'win32' && Number.isFinite(Number(compact.w))) {
+        const currentBounds = compactWin.getBounds();
+        compactWin.setBounds({
+          x: Math.round(Number(compact.x)),
+          y: Math.round(Number(compact.y)),
+          width: Math.round(Number(compact.w)),
+          height: currentBounds.height,
+        });
+      } else {
+        compactWin.setPosition(Math.round(Number(compact.x)), Math.round(Number(compact.y)));
+      }
       compactWin.setIgnoreMouseEvents(false);
     }
     return null;

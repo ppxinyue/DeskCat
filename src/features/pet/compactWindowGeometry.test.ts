@@ -17,3 +17,10 @@ test('compact chat repositioning keeps the requested width only on Windows', () 
   assert.match(mainSource, /existing\.setBounds\(\{ x: Math\.round\(x\), y: Math\.round\(y\), width: Math\.round\(w\), height: Math\.round\(h\) \}\);/);
   assert.match(mainSource, /existing\.setPosition\(Math\.round\(x\), Math\.round\(y\)\);/);
 });
+
+test('dragging the pet keeps compact chat width fixed on Windows', () => {
+  assert.match(mainSource, /move_pet_and_compact_chat/);
+  assert.match(mainSource, /process\.platform === 'win32' && Number\.isFinite\(Number\(compact\.w\)\)/);
+  assert.match(mainSource, /width: Math\.round\(Number\(compact\.w\)\)/);
+  assert.match(mainSource, /height: currentBounds\.height/);
+});
