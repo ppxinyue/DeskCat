@@ -37,7 +37,12 @@ const {
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
 const { clampBoundsToWorkArea, createPetWindowDebugInfo, isBoundsVisibleOnDisplays, windowSnapshot } = require('./windowDiagnostics.cjs');
 const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
-const { bundledIconCandidates, shouldHideApplicationMenu, shouldUseNativeWindowsIcon } = require('./appIcons.cjs');
+const {
+  bundledIconCandidates,
+  shouldHideApplicationMenu,
+  shouldUseDynamicPetAppIcon,
+  shouldUseNativeWindowsIcon,
+} = require('./appIcons.cjs');
 const { readDeskcatAppFile } = require('./appAssets.cjs');
 const { decodeDeskcatFileUrl } = require('./fileUrls.cjs');
 const {
@@ -4481,7 +4486,11 @@ const handlers = {
     if (!claudeCodingState.running) claudeCodingState.status = CODEX_STATUS.DONE;
     return publishClaudeCodingState();
   },
-  set_app_icon: ({ path: iconPath }) => setAppIcon(iconPath),
+  set_app_icon: ({ path: iconPath }) => (
+    shouldUseDynamicPetAppIcon(process.platform)
+      ? setAppIcon(iconPath)
+      : setAppIcon(resolveBundledAppIconPath())
+  ),
   move_pet_and_compact_chat: ({ pet, compact }, event) => {
     const petWin = BrowserWindow.fromWebContents(event.sender) || windows.get('pet');
     const compactWin = windows.get('compact-chat');

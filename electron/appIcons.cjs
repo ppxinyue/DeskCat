@@ -29,8 +29,13 @@ function shouldHideApplicationMenu(platform = process.platform) {
   return platform === 'win32';
 }
 
+function shouldUseDynamicPetAppIcon(platform = process.platform) {
+  return platform !== 'win32';
+}
+
 module.exports = {
   bundledIconCandidates,
   shouldHideApplicationMenu,
+  shouldUseDynamicPetAppIcon,
   shouldUseNativeWindowsIcon,
 };

@@ -5,6 +5,7 @@ const test = require('node:test');
 const {
   bundledIconCandidates,
   shouldHideApplicationMenu,
+  shouldUseDynamicPetAppIcon,
   shouldUseNativeWindowsIcon,
 } = require('./appIcons.cjs');
 
@@ -39,4 +40,10 @@ test('application menu is hidden only on Windows', () => {
   assert.equal(shouldHideApplicationMenu('win32'), true);
   assert.equal(shouldHideApplicationMenu('darwin'), false);
   assert.equal(shouldHideApplicationMenu('linux'), false);
+});
+
+test('dynamic pet app icons are disabled on Windows to keep square titlebar icons', () => {
+  assert.equal(shouldUseDynamicPetAppIcon('win32'), false);
+  assert.equal(shouldUseDynamicPetAppIcon('darwin'), true);
+  assert.equal(shouldUseDynamicPetAppIcon('linux'), true);
 });
