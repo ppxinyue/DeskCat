@@ -24,7 +24,7 @@ test('Windows packaging runs native build and production asset verification befo
 });
 
 test('electron:start rebuilds production assets before launching Electron', () => {
-  assert.equal(script('electron:start'), 'pnpm native:build && pnpm build && electron .');
+  assert.equal(script('electron:start'), 'pnpm native:build && pnpm build && node scripts/start-electron-prod.cjs');
 });
 
 test('macOS packaging script remains scoped to mac targets', () => {

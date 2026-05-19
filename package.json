@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "native:build": "node scripts/build-panel-key-fix.mjs",
     "electron:dev": "pnpm native:build && concurrently -k \"pnpm dev\" \"wait-on tcp:127.0.0.1:5173 && node scripts/start-electron-dev.cjs\"",
-    "electron:start": "pnpm native:build && pnpm build && electron .",
+    "electron:start": "pnpm native:build && pnpm build && node scripts/start-electron-prod.cjs",
     "build": "tsc -b && vite build && node scripts/optimize-pet-assets.mjs && node scripts/prune-dist-assets.mjs && node scripts/verify-pet-assets.mjs",
     "electron:build": "pnpm native:build && pnpm build && electron-builder",
     "electron:build:mac": "pnpm native:build && pnpm build && electron-builder --mac dmg --x64 --arm64 --publish never",
