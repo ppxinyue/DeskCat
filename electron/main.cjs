@@ -37,6 +37,7 @@ const {
 const { createDeferredWindowShowController, createPetVisibilityController } = require('./windowLifecycle.cjs');
 const { createPetWindowDebugInfo, windowSnapshot } = require('./windowDiagnostics.cjs');
 const { applyTopmostPolicy, resolveTopmostPolicy, shouldSkipTopmostApply } = require('./windowTopmost.cjs');
+const { bundledIconCandidates, shouldHideApplicationMenu, shouldUseNativeWindowsIcon } = require('./appIcons.cjs');
 const { DEFAULT_GLOBAL_SHORTCUT, createGlobalShortcutRegistry } = require('./globalShortcuts.cjs');
 const { applyDefaultLaunchAtLogin, readLaunchAtLogin, setLaunchAtLogin } = require('./loginItems.cjs');
 const {
@@ -175,6 +176,7 @@ function escapeHtml(value) {
 
 app.setName('DeskCat');
 if (process.platform === 'darwin') app.setActivationPolicy('regular');
+if (shouldHideApplicationMenu(process.platform)) Menu.setApplicationMenu(null);
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -610,22 +612,30 @@ function resolveAppIconPath(iconPath) {
 }
 
 function resolveBundledAppIconPath() {
-  const candidates = [
-    path.join(app.getAppPath(), 'public', 'assets', 'idle', 'png', 'idle.png'),
-    path.join(app.getAppPath(), 'src-tauri', 'icons', '32x32.png'),
-    path.join(app.getAppPath(), 'src-tauri', 'icons', 'icon.png'),
-    currentAppIconPath,
-    path.join(app.getAppPath(), 'dist', 'favicon.svg'),
-    path.join(app.getAppPath(), 'public', 'favicon.svg'),
-  ];
+  const candidates = bundledIconCandidates(app.getAppPath(), {
+    platform: process.platform,
+    fallbackIconPath: currentAppIconPath,
+  });
   return candidates.find((candidate) => fs.existsSync(candidate)) || currentAppIconPath;
+}
+
+function makeTrayIconImage(iconPath) {
+  if (!fs.existsSync(iconPath)) return nativeImage.createEmpty();
+  if (shouldUseNativeWindowsIcon(iconPath, process.platform)) {
+    const image = nativeImage.createFromPath(iconPath);
+    if (!image.isEmpty()) image.setTemplateImage(false);
+    return image;
+  }
+  return makeIconImage(iconPath, process.platform === 'win32' ? 32 : 18);
 }
 
 function setAppIcon(iconPath) {
   const resolved = resolveAppIconPath(iconPath);
   if (!fs.existsSync(resolved)) return false;
   currentAppIconPath = resolved;
-  const image = makeProportionalIcon(resolved, 512);
+  const image = shouldUseNativeWindowsIcon(resolved, process.platform)
+    ? nativeImage.createFromPath(resolved)
+    : makeProportionalIcon(resolved, 512);
   if (image.isEmpty()) return false;
   currentAppIcon = image;
   if (process.platform === 'darwin' && app.dock) {
@@ -633,7 +643,7 @@ function setAppIcon(iconPath) {
     app.dock.show();
     app.dock.setIcon(dockImage.isEmpty() ? image : dockImage);
   }
-  const trayImage = makeIconImage(resolved, 18);
+  const trayImage = makeTrayIconImage(resolved);
   if (!trayImage.isEmpty()) {
     if (!tray) {
       tray = new Tray(trayImage);
