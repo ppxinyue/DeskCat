@@ -20,7 +20,12 @@ export default async function handler(request, response) {
   }
 
   const days = parseDays(request.query.days);
-  const url = new URL(endpoint);
+  let url;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return response.status(500).json({ ok: false, error: 'DASHBOARD_API_URL is invalid' });
+  }
   url.searchParams.set('days', String(days));
 
   try {
@@ -29,7 +34,10 @@ export default async function handler(request, response) {
         'x-deskcat-dashboard-token': token,
       },
     });
-    const payload = await upstream.json();
+    const contentType = upstream.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await upstream.json()
+      : { ok: false, error: await upstream.text() };
     response.setHeader('cache-control', 'no-store');
     return response.status(upstream.status).json(payload);
   } catch (error) {

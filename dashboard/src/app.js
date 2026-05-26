@@ -702,7 +702,10 @@ async function loadDashboard() {
   const url = new URL('/api/metrics', window.location.origin);
   url.searchParams.set('days', days);
   const response = await fetch(url);
-  const data = await response.json();
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json')
+    ? await response.json()
+    : { ok: false, error: await response.text() };
   if (!response.ok || !data.ok) {
     throw new Error(data.error || `Request failed: ${response.status}`);
   }
@@ -719,6 +722,6 @@ form.addEventListener('submit', (event) => {
   });
 });
 
-loadDashboard().catch(() => {
-  setStatus('Dashboard API is not configured.');
+loadDashboard().catch((error) => {
+  setStatus(error instanceof Error ? error.message : String(error), 'error');
 });
