@@ -203,6 +203,26 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function formatError(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const details = error as Record<string, unknown>;
+    const parts = [
+      details.message,
+      details.code ? `code: ${details.code}` : null,
+      details.details ? `details: ${details.details}` : null,
+      details.hint ? `hint: ${details.hint}` : null,
+    ].filter(Boolean);
+    if (parts.length) return parts.map(String).join(' | ');
+    try {
+      return JSON.stringify(details);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
 function getSupabaseAdmin() {
   const url = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -1007,7 +1027,7 @@ async function getGithubDownloads() {
       })).filter((row) => row.date);
       cloneWindowDays = dailyClones.length || 14;
     } catch (error) {
-      cloneError = error instanceof Error ? error.message : String(error);
+      cloneError = formatError(error);
     }
   }
 
@@ -1070,7 +1090,7 @@ async function getGithubRepoStats() {
         dailyViews,
       };
     } catch (error) {
-      viewsError = error instanceof Error ? error.message : String(error);
+      viewsError = formatError(error);
     }
   }
 
@@ -1164,24 +1184,25 @@ Deno.serve(async (req) => {
     ]);
 
     for (const result of [
-      devices,
-      deviceVersions,
-      backups,
-      telemetry,
-      daily,
-      featureDaily,
-      featureUsersDaily,
-      deviceUsageDaily,
-      deviceFeatureDaily,
-      deviceBackups,
-      downloads,
-      downloadsTotal,
-      pageViews,
-      pageViewsTotal,
-      recent,
-      todayTimeline,
-    ]) {
-      if (result.error) throw result.error;
+      ['devices', devices],
+      ['deviceVersions', deviceVersions],
+      ['backups', backups],
+      ['telemetry', telemetry],
+      ['daily', daily],
+      ['featureDaily', featureDaily],
+      ['featureUsersDaily', featureUsersDaily],
+      ['deviceUsageDaily', deviceUsageDaily],
+      ['deviceFeatureDaily', deviceFeatureDaily],
+      ['deviceBackups', deviceBackups],
+      ['downloads', downloads],
+      ['downloadsTotal', downloadsTotal],
+      ['pageViews', pageViews],
+      ['pageViewsTotal', pageViewsTotal],
+      ['recent', recent],
+      ['todayTimeline', todayTimeline],
+    ] as const) {
+      const [label, queryResult] = result;
+      if (queryResult.error) throw new Error(`${label} query failed: ${formatError(queryResult.error)}`);
     }
 
     const deviceRows = (devices.data ?? []) as DeviceMetric[];
@@ -1208,7 +1229,7 @@ Deno.serve(async (req) => {
       cloneWindowDays: 14,
       assets: [],
       dailyClones: [],
-      error: error instanceof Error ? error.message : String(error),
+      error: formatError(error),
     }));
     const githubStats = await getGithubRepoStats().catch((error) => ({
       repo: Deno.env.get('DESKCAT_GITHUB_REPO') || Deno.env.get('GITHUB_REPO') || 'ppxinyue/DeskCat',
@@ -1216,7 +1237,7 @@ Deno.serve(async (req) => {
       views: 0,
       uniqueViews: 0,
       viewsWindowDays: 14,
-      viewsError: error instanceof Error ? error.message : String(error),
+      viewsError: formatError(error),
     }));
     const latestDaily = dailyRows.at(-1);
     const productSiteViewsTotal = Number(pageViewsTotal.count ?? publicStats?.productSiteViews ?? 0);
@@ -1292,7 +1313,7 @@ Deno.serve(async (req) => {
       recentEvents: (recent.data ?? []) as RecentEvent[],
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatError(error);
     const status = message.includes('Unauthorized') ? 401 : 400;
     return json({ ok: false, error: message }, status);
   }

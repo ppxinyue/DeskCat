@@ -39,6 +39,25 @@ function setStatus(message, tone = 'muted') {
   statusEl.style.color = tone === 'error' ? '#d13438' : tone === 'ok' ? '#218358' : '#687076';
 }
 
+function formatError(error) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object') {
+    const parts = [
+      error.message,
+      error.code ? `code: ${error.code}` : null,
+      error.details ? `details: ${error.details}` : null,
+      error.hint ? `hint: ${error.hint}` : null,
+    ].filter(Boolean);
+    if (parts.length) return parts.join(' | ');
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+  return String(error);
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat('en-US').format(Number(value || 0));
 }
@@ -707,7 +726,7 @@ async function loadDashboard() {
     ? await response.json()
     : { ok: false, error: await response.text() };
   if (!response.ok || !data.ok) {
-    throw new Error(data.error || `Request failed: ${response.status}`);
+    throw new Error(data.error ? formatError(data.error) : `Request failed: ${response.status}`);
   }
   render(data);
   setStatus('Live', 'ok');
@@ -718,10 +737,10 @@ daysInput.value = getStored(storage.days, '30');
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   loadDashboard().catch((error) => {
-    setStatus(error instanceof Error ? error.message : String(error), 'error');
+    setStatus(formatError(error), 'error');
   });
 });
 
 loadDashboard().catch((error) => {
-  setStatus(error instanceof Error ? error.message : String(error), 'error');
+  setStatus(formatError(error), 'error');
 });
