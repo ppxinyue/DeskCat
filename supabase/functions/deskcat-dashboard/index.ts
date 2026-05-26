@@ -1133,6 +1133,7 @@ Deno.serve(async (req) => {
     const supabase = getSupabaseAdmin();
     const days = parseDays(req);
     const startDate = daysAgoDate(days);
+    const endDate = addUtcDays(startDate, days);
     const today = getShanghaiTodayBounds();
 
     const [
@@ -1141,8 +1142,6 @@ Deno.serve(async (req) => {
       backups,
       telemetry,
       daily,
-      featureDaily,
-      featureUsersDaily,
       deviceUsageDaily,
       deviceFeatureDaily,
       deviceBackups,
@@ -1158,11 +1157,9 @@ Deno.serve(async (req) => {
       supabase.from('device_version_installs').select('device_id,app_version,platform,first_seen_at,last_seen_at,metadata', { count: 'exact' }).order('last_seen_at', { ascending: false }),
       supabase.from('cloud_backups').select('id', { count: 'exact', head: true }),
       supabase.from('telemetry_events').select('id', { count: 'exact', head: true }),
-      supabase.from('daily_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: true }),
-      supabase.from('daily_feature_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }),
-      supabase.from('daily_feature_user_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }),
-      supabase.from('daily_device_usage_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }).order('duration_ms', { ascending: false }),
-      supabase.from('daily_device_feature_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }).order('duration_ms', { ascending: false }),
+      supabase.rpc('get_dashboard_daily_metrics', { p_start_date: startDate, p_end_date: endDate }),
+      supabase.rpc('get_dashboard_device_usage_metrics', { p_start_date: startDate, p_end_date: endDate }),
+      supabase.rpc('get_dashboard_device_feature_metrics', { p_start_date: startDate, p_end_date: endDate }),
       supabase.from('device_backup_metrics').select('*'),
       supabase.from('daily_download_metrics').select('*').gte('metric_date', startDate).order('metric_date', { ascending: false }),
       supabase.from('download_events').select('id', { count: 'exact', head: true }).not('asset', 'ilike', 'debug-%'),
@@ -1189,8 +1186,6 @@ Deno.serve(async (req) => {
       ['backups', backups],
       ['telemetry', telemetry],
       ['daily', daily],
-      ['featureDaily', featureDaily],
-      ['featureUsersDaily', featureUsersDaily],
       ['deviceUsageDaily', deviceUsageDaily],
       ['deviceFeatureDaily', deviceFeatureDaily],
       ['deviceBackups', deviceBackups],
