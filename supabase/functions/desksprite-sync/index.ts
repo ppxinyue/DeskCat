@@ -102,6 +102,17 @@ function getRequestGeo(req: Request) {
   };
 }
 
+function isCloudTelemetryEvent(event: TelemetryEventPayload) {
+  return event.feature !== 'timeline' && !event.eventName.startsWith('timeline.');
+}
+
+function scrubBackupSnapshot(snapshot: Record<string, unknown>) {
+  const scrubbed = { ...snapshot };
+  delete scrubbed.timelineEntries;
+  delete scrubbed.telemetryEvents;
+  return scrubbed;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -166,14 +177,14 @@ Deno.serve(async (req) => {
           backup_id: payload.backup.id,
           device_id: payload.deviceId,
           reason: payload.backup.reason,
-          snapshot: payload.backup.snapshot,
+          snapshot: scrubBackupSnapshot(payload.backup.snapshot),
           client_created_at: payload.backup.createdAt,
         }, { onConflict: 'device_id,backup_id', ignoreDuplicates: true });
       if (backupError) throw backupError;
       backupInserted = true;
     }
 
-    const telemetryEvents = payload.telemetryEvents ?? [];
+    const telemetryEvents = (payload.telemetryEvents ?? []).filter(isCloudTelemetryEvent);
     if (telemetryEvents.length > 0) {
       const rows = telemetryEvents.map((event) => ({
         client_event_id: event.id,

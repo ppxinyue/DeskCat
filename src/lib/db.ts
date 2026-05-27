@@ -296,9 +296,9 @@ function createCloudSnapshot(store: Store): Omit<Store, 'cloudSync'> {
     messages: store.messages,
     settings: scrubSettingsForCloud(store.settings),
     usageLogs: store.usageLogs,
-    telemetryEvents: store.telemetryEvents,
+    telemetryEvents: [],
     focusStats: store.focusStats,
-    timelineEntries: store.timelineEntries,
+    timelineEntries: [],
     nextIds: store.nextIds,
   };
 }
@@ -359,7 +359,11 @@ function getClientDeviceInfo() {
 }
 
 function getUnsyncedTelemetryEvents(store: Store) {
-  return store.telemetryEvents.filter((event) => !event.syncedAt);
+  return store.telemetryEvents.filter((event) =>
+    !event.syncedAt &&
+    event.feature !== 'timeline' &&
+    !event.eventName.startsWith('timeline.')
+  );
 }
 
 function cloneTelemetryEvent(event: TelemetryEvent): TelemetryEvent {
